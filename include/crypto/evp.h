@@ -22,11 +22,11 @@ struct evp_pkey_ctx_st {
     int operation;
 
     /*
-     * Library context, Algorithm name and properties associated
+     * Library context, Key type name and properties associated
      * with this context
      */
     OPENSSL_CTX *libctx;
-    const char *algorithm;
+    const char *keytype;
     const char *propquery;
 
     /* cached key manager */
@@ -638,3 +638,4 @@ void evp_encode_ctx_set_flags(EVP_ENCODE_CTX *ctx, unsigned int flags);
 
 const EVP_CIPHER *evp_get_cipherbyname_ex(OPENSSL_CTX *libctx, const char *name);
 const EVP_MD *evp_get_digestbyname_ex(OPENSSL_CTX *libctx, const char *name);
+

@@ -67,6 +67,14 @@ $OpenSSL::safe::opt_x_item = ""
 . "Set extended certificate verification options.\n"
 . "See L<openssl(1)/Extended Verification Options> for details.";
 
+# Name output options
+$OpenSSL::safe::opt_name_synopsis = ""
+. "[B<-nameopt> I<option>]";
+$OpenSSL::safe::opt_name_item = ""
+. "=item B<-nameopt> I<option>\n"
+. "\n"
+. "This specifies how the subject or issuer names are displayed.\n"
+. "See L<openssl(1)/Name Format Options> for details.";
 
 # Random State Options
 $OpenSSL::safe::opt_r_synopsis = ""
@@ -76,6 +84,14 @@ $OpenSSL::safe::opt_r_item = ""
 . "=item B<-rand> I<files>, B<-writerand> I<file>\n"
 . "\n"
 . "See L<openssl(1)/Random State Options> for details.";
+
+# Engine option
+$OpenSSL::safe::opt_engine_synopsis = ""
+. "[B<-engine> I<id>]";
+$OpenSSL::safe::opt_engine_item = ""
+. "=item B<-engine> I<id>\n"
+. "\n"
+. "See L<openssl(1)/Engine Options>.";
 
 # Trusted certs options
 $OpenSSL::safe::opt_trust_synopsis = ""
@@ -90,6 +106,38 @@ $OpenSSL::safe::opt_trust_item = ""
 . "B<-CAstore> I<uri>, B<-no-CAstore>\n"
 . "\n"
 . "See L<openssl(1)/Trusted Certificate Options> for details.";
+
+# TLS Version Options
+$OpenSSL::safe::opt_versiontls_synopsis = ""
+. "[B<-no_ssl3>]\n"
+. "[B<-no_tls1>]\n"
+. "[B<-no_tls1_1>]\n"
+. "[B<-no_tls1_2>]\n"
+. "[B<-no_tls1_3>]\n"
+. "[B<-ssl3>]\n"
+. "[B<-tls1>]\n"
+. "[B<-tls1_1>]\n"
+. "[B<-tls1_2>]\n"
+. "[B<-tls1_3>]";
+$OpenSSL::safe::opt_versiontls_item = ""
+. "=item B<-no_ssl3>, B<-no_tls1>, B<-no_tls1_1>, B<-no_tls1_2>, B<-no_tls1_3>,\n"
+. "B<-ssl3>, B<-tls1>, B<-tls1_1>, B<-tls1_2>, B<-tls1_3>\n"
+. "\n"
+. "See L<openssl(1)/TLS Version Options>.";
+
+# TLS/DTLS Version Options
+$OpenSSL::safe::opt_version_synopsis = ""
+. "$OpenSSL::safe::opt_versiontls_synopsis\n"
+. "[B<-dtls>]\n"
+. "[B<-dtls1>]\n"
+. "[B<-dtls1_2>]";
+$OpenSSL::safe::opt_version_item = "\n"
+. "$OpenSSL::safe::opt_versiontls_item\n"
+. "\n"
+. "=item B<-dtls>, B<-dtls1>, B<-dtls1_2>\n"
+. "\n"
+. "These specify the use of DTLS instead of TLS.\n"
+. "See L<openssl(1)/TLS Version Options>.";
 
 # SSL connection options.
 # TODO(3.0) Not currently used.  The refactoring needs to be done, and

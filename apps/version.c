@@ -129,9 +129,6 @@ opthelp:
     if (options) {
         printf("options: ");
         printf(" %s", BN_options());
-#ifndef OPENSSL_NO_MD2
-        printf(" %s", MD2_options());
-#endif
 #ifndef OPENSSL_NO_RC4
         printf(" %s", RC4_options());
 #endif
@@ -140,9 +137,6 @@ opthelp:
 #endif
 #ifndef OPENSSL_NO_IDEA
         printf(" %s", IDEA_options());
-#endif
-#ifndef OPENSSL_NO_BF
-        printf(" %s", BF_options());
 #endif
         printf("\n");
     }
