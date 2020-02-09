@@ -138,6 +138,7 @@ static const OSSL_ALGORITHM deflt_digests[] = {
 };
 
 static const OSSL_ALGORITHM_CAPABLE deflt_ciphers[] = {
+    ALG("NULL", null_functions),
     ALG("AES-256-ECB", aes256ecb_functions),
     ALG("AES-192-ECB", aes192ecb_functions),
     ALG("AES-128-ECB", aes128ecb_functions),
@@ -416,19 +417,19 @@ static const OSSL_ALGORITHM deflt_serializer[] = {
       dh_priv_text_serializer_functions },
     { "DH", "default=yes,format=text,type=public",
       dh_pub_text_serializer_functions },
-    { "DH", "default=yes,format=text,type=domainparams",
+    { "DH", "default=yes,format=text,type=parameters",
       dh_param_text_serializer_functions },
     { "DH", "default=yes,format=der,type=private",
       dh_priv_der_serializer_functions },
     { "DH", "default=yes,format=der,type=public",
       dh_pub_der_serializer_functions },
-    { "DH", "default=yes,format=der,type=domainparams",
+    { "DH", "default=yes,format=der,type=parameters",
       dh_param_der_serializer_functions },
     { "DH", "default=yes,format=pem,type=private",
       dh_priv_pem_serializer_functions },
     { "DH", "default=yes,format=pem,type=public",
       dh_pub_pem_serializer_functions },
-    { "DH", "default=yes,format=pem,type=domainparams",
+    { "DH", "default=yes,format=pem,type=parameters",
       dh_param_pem_serializer_functions },
 #endif
 
@@ -437,19 +438,19 @@ static const OSSL_ALGORITHM deflt_serializer[] = {
       dsa_priv_text_serializer_functions },
     { "DSA", "default=yes,format=text,type=public",
       dsa_pub_text_serializer_functions },
-    { "DSA", "default=yes,format=text,type=domainparams",
+    { "DSA", "default=yes,format=text,type=parameters",
       dsa_param_text_serializer_functions },
     { "DSA", "default=yes,format=der,type=private",
       dsa_priv_der_serializer_functions },
     { "DSA", "default=yes,format=der,type=public",
       dsa_pub_der_serializer_functions },
-    { "DSA", "default=yes,format=der,type=domainparams",
+    { "DSA", "default=yes,format=der,type=parameters",
       dsa_param_der_serializer_functions },
     { "DSA", "default=yes,format=pem,type=private",
       dsa_priv_pem_serializer_functions },
     { "DSA", "default=yes,format=pem,type=public",
       dsa_pub_pem_serializer_functions },
-    { "DSA", "default=yes,format=pem,type=domainparams",
+    { "DSA", "default=yes,format=pem,type=parameters",
       dsa_param_pem_serializer_functions },
 #endif
 

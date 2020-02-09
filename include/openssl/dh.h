@@ -75,6 +75,10 @@ DECLARE_ASN1_ITEM(DHparams)
 # define DH_GENERATOR_5          5
 
 /* DH_check error codes */
+/*
+ * NB: These values must align with the equivalently named macros in
+ * internal/ffc.h.
+ */
 # define DH_CHECK_P_NOT_PRIME            0x01
 # define DH_CHECK_P_NOT_SAFE_PRIME       0x02
 # define DH_UNABLE_TO_CHECK_GENERATOR    0x04
@@ -95,6 +99,11 @@ DECLARE_ASN1_ITEM(DHparams)
  * backward compatibility:
  */
 # define DH_CHECK_P_NOT_STRONG_PRIME     DH_CHECK_P_NOT_SAFE_PRIME
+
+/* DH parameter generation types used by EVP_PKEY_CTX_set_dh_paramgen_type() */
+# define DH_PARAMGEN_TYPE_GENERATOR    0   /* Use a generator g */
+# define DH_PARAMGEN_TYPE_FIPS_186_2   1   /* Use legacy FIPS186-2 standard */
+# define DH_PARAMGEN_TYPE_FIPS_186_4   2   /* Use FIPS186-4 standard */
 
 # define d2i_DHparams_fp(fp,x) \
     (DH *)ASN1_d2i_fp((char *(*)())DH_new, \
@@ -171,9 +180,9 @@ DH *DH_get_1024_160(void);
 DH *DH_get_2048_224(void);
 DH *DH_get_2048_256(void);
 
-/* Named parameters, currently RFC7919 */
+/* Named parameters, currently RFC7919 and RFC3526 */
 DH *DH_new_by_nid(int nid);
-int DH_get_nid(const DH *dh);
+int DH_get_nid(DH *dh);
 
 # ifndef OPENSSL_NO_CMS
 /* RFC2631 KDF */

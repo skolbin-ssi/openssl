@@ -14,31 +14,16 @@
 extern "C" {
 # endif
 
-/*
- * Well known parameter names that Providers can define
- */
+/* Well known parameter names that Providers can define */
+#define OSSL_PROV_PARAM_NAME            "name"                /* utf8_string */
+#define OSSL_PROV_PARAM_VERSION         "version"             /* utf8_string */
+#define OSSL_PROV_PARAM_BUILDINFO       "buildinfo"           /* utf8_string */
+#define OSSL_PROV_PARAM_MODULE_FILENAME "module-filename"     /* octet_string */
 
-/*
- * A printable name for this provider
- * Type: OSSL_PARAM_UTF8_STRING
- */
-#define OSSL_PROV_PARAM_NAME        "name"
-/*
- * A version string for this provider
- * Type: OSSL_PARAM_UTF8_STRING
- */
-#define OSSL_PROV_PARAM_VERSION     "version"
-/*
- * A string providing provider specific build information
- * Type: OSSL_PARAM_UTF8_STRING
- */
-#define OSSL_PROV_PARAM_BUILDINFO   "buildinfo"
-
-/*
- * The module filename
- * Type: OSSL_PARAM_OCTET_STRING
- */
-#define OSSL_PROV_PARAM_MODULE_FILENAME "module-filename"
+/* Self test callback parameters */
+#define OSSL_PROV_PARAM_SELF_TEST_PHASE  "st-phase" /* utf8_string */
+#define OSSL_PROV_PARAM_SELF_TEST_TYPE   "st-type"  /* utf8_string */
+#define OSSL_PROV_PARAM_SELF_TEST_DESC   "st-desc"  /* utf8_string */
 
 /*
  * Algorithm parameters
@@ -102,7 +87,16 @@ extern "C" {
 #define OSSL_DIGEST_PARAM_FLAGS      "flags"     /* ulong */
 
 /* Known DIGEST names (not a complete list) */
-#define OSSL_DIGEST_NAME_MD5 "MD5"
+#define OSSL_DIGEST_NAME_MD5            "MD5"
+#define OSSL_DIGEST_NAME_SHA1           "SHA1"
+#define OSSL_DIGEST_NAME_SHA2_224       "SHA2-224"
+#define OSSL_DIGEST_NAME_SHA2_256       "SHA2-256"
+#define OSSL_DIGEST_NAME_SHA2_384       "SHA2-384"
+#define OSSL_DIGEST_NAME_SHA2_512       "SHA2-512"
+#define OSSL_DIGEST_NAME_SHA3_224       "SHA3-224"
+#define OSSL_DIGEST_NAME_SHA3_256       "SHA3-256"
+#define OSSL_DIGEST_NAME_SHA3_384       "SHA3-384"
+#define OSSL_DIGEST_NAME_SHA3_512       "SHA3-512"
 #define OSSL_DIGEST_NAME_KECCAK_KMAC128 "KECCAK-KMAC-128"
 #define OSSL_DIGEST_NAME_KECCAK_KMAC256 "KECCAK-KMAC-256"
 
@@ -169,6 +163,15 @@ extern "C" {
 #define OSSL_KDF_NAME_KRB5KDF       "KRB5KDF"
 
 /* PKEY parameters */
+/* Common PKEY parameters */
+#define OSSL_PKEY_PARAM_BITS                "bits" /* integer */
+#define OSSL_PKEY_PARAM_MAX_SIZE            "max-size" /* integer */
+#define OSSL_PKEY_PARAM_SECURITY_BITS       "security-bits" /* integer */
+#define OSSL_PKEY_PARAM_DIGEST              OSSL_ALG_PARAM_DIGEST
+#define OSSL_PKEY_PARAM_PROPERTIES          OSSL_ALG_PARAM_PROPERTIES
+#define OSSL_PKEY_PARAM_DEFAULT_DIGEST      "default-digest" /* utf8 string */
+#define OSSL_PKEY_PARAM_MANDATORY_DIGEST    "mandatory-digest" /* utf8 string */
+
 /* Diffie-Hellman/DSA Parameters */
 #define OSSL_PKEY_PARAM_FFC_P        "p"
 #define OSSL_PKEY_PARAM_FFC_G        "g"
@@ -208,8 +211,9 @@ extern "C" {
 #define OSSL_EXCHANGE_PARAM_PAD      "pad" /* uint */
 
 /* Signature parameters */
-#define OSSL_SIGNATURE_PARAM_DIGEST         OSSL_ALG_PARAM_DIGEST
-#define OSSL_SIGNATURE_PARAM_DIGEST_SIZE    "digest-size"
+#define OSSL_SIGNATURE_PARAM_ALGORITHM_ID       "algorithm-id"
+#define OSSL_SIGNATURE_PARAM_DIGEST             OSSL_PKEY_PARAM_DIGEST
+#define OSSL_SIGNATURE_PARAM_PROPERTIES         OSSL_PKEY_PARAM_PROPERTIES
 
 /* Asym cipher parameters */
 #define OSSL_ASYM_CIPHER_PARAM_PAD_MODE                 "pad-mode"

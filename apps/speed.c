@@ -279,8 +279,10 @@ const OPTIONS speed_options[] = {
 
     OPT_SECTION("Selection"),
     {"evp", OPT_EVP, 's', "Use EVP-named cipher or digest"},
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     {"hmac", OPT_HMAC, 's', "HMAC using EVP-named digest"},
-#ifndef OPENSSL_NO_CMAC
+#endif
+#if !defined(OPENSSL_NO_CMAC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"cmac", OPT_CMAC, 's', "CMAC using EVP-named cipher"},
 #endif
     {"decrypt", OPT_DECRYPT, '-',
@@ -338,13 +340,17 @@ static const OPT_PAIR doit_choices[] = {
 #if !defined(OPENSSL_NO_MD4) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"md4", D_MD4},
 #endif
-#ifndef OPENSSL_NO_MD5
+#if !defined(OPENSSL_NO_MD5) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"md5", D_MD5},
+# ifndef OPENSSL_NO_DEPRECATED_3_0
     {"hmac", D_HMAC},
+# endif
 #endif
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     {"sha1", D_SHA1},
     {"sha256", D_SHA256},
     {"sha512", D_SHA512},
+#endif
 #if !defined(OPENSSL_NO_WHIRLPOOL) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"whirlpool", D_WHIRLPOOL},
 #endif
@@ -353,10 +359,10 @@ static const OPT_PAIR doit_choices[] = {
     {"rmd160", D_RMD160},
     {"ripemd160", D_RMD160},
 #endif
-#ifndef OPENSSL_NO_RC4
+#if !defined(OPENSSL_NO_RC4) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"rc4", D_RC4},
 #endif
-#ifndef OPENSSL_NO_DES
+#if !defined(OPENSSL_NO_DES) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"des-cbc", D_CBC_DES},
     {"des-ede3", D_EDE3_DES},
 #endif
@@ -368,19 +374,19 @@ static const OPT_PAIR doit_choices[] = {
     {"aes-192-ige", D_IGE_192_AES},
     {"aes-256-ige", D_IGE_256_AES},
 #endif
-#ifndef OPENSSL_NO_RC2
+#if !defined(OPENSSL_NO_RC2) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"rc2-cbc", D_CBC_RC2},
     {"rc2", D_CBC_RC2},
 #endif
-#ifndef OPENSSL_NO_RC5
+#if !defined(OPENSSL_NO_RC5) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"rc5-cbc", D_CBC_RC5},
     {"rc5", D_CBC_RC5},
 #endif
-#ifndef OPENSSL_NO_IDEA
+#if !defined(OPENSSL_NO_IDEA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"idea-cbc", D_CBC_IDEA},
     {"idea", D_CBC_IDEA},
 #endif
-#ifndef OPENSSL_NO_SEED
+#if !defined(OPENSSL_NO_SEED) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     {"seed-cbc", D_CBC_SEED},
     {"seed", D_CBC_SEED},
 #endif
@@ -556,8 +562,10 @@ typedef struct loopargs_st {
     size_t outlen[EC_NUM];
 #endif
     EVP_CIPHER_CTX *ctx;
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     HMAC_CTX *hctx;
-#ifndef OPENSSL_NO_CMAC
+#endif
+#if !defined(OPENSSL_NO_CMAC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     CMAC_CTX *cmac_ctx;
 #endif
     GCM128_CONTEXT *gcm_ctx;
@@ -621,7 +629,7 @@ static int EVP_Digest_MD4_loop(void *args)
 }
 #endif
 
-#ifndef OPENSSL_NO_MD5
+#if !defined(OPENSSL_NO_MD5) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 static int MD5_loop(void *args)
 {
     loopargs_t *tempargs = *(loopargs_t **) args;
@@ -633,6 +641,7 @@ static int MD5_loop(void *args)
     return count;
 }
 
+# ifndef OPENSSL_NO_DEPRECATED_3_0
 static int HMAC_loop(void *args)
 {
     loopargs_t *tempargs = *(loopargs_t **) args;
@@ -648,8 +657,10 @@ static int HMAC_loop(void *args)
     }
     return count;
 }
+# endif
 #endif
 
+#ifndef OPENSSL_NO_DEPRECATED_3_0
 static int SHA1_loop(void *args)
 {
     loopargs_t *tempargs = *(loopargs_t **) args;
@@ -682,6 +693,7 @@ static int SHA512_loop(void *args)
         SHA512(buf, lengths[testnum], sha512);
     return count;
 }
+#endif
 
 #if !defined(OPENSSL_NO_WHIRLPOOL) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 static int WHIRLPOOL_loop(void *args)
@@ -712,7 +724,7 @@ static int EVP_Digest_RMD160_loop(void *args)
 }
 #endif
 
-#ifndef OPENSSL_NO_RC4
+#if !defined(OPENSSL_NO_RC4) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 static RC4_KEY rc4_ks;
 static int RC4_loop(void *args)
 {
@@ -725,7 +737,7 @@ static int RC4_loop(void *args)
 }
 #endif
 
-#ifndef OPENSSL_NO_DES
+#if !defined(OPENSSL_NO_DES) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 static unsigned char DES_iv[8];
 static DES_key_schedule sch[3];
 static int DES_ncbc_encrypt_loop(void *args)
@@ -966,6 +978,7 @@ static int EVP_Digest_loop(void *args)
     return count;
 }
 
+#ifndef OPENSSL_NO_DEPRECATED_3_0
 static const EVP_MD *evp_hmac_md = NULL;
 static char *evp_hmac_name = NULL;
 static int EVP_HMAC_loop(void *args)
@@ -982,8 +995,9 @@ static int EVP_HMAC_loop(void *args)
     }
     return count;
 }
+#endif
 
-#ifndef OPENSSL_NO_CMAC
+#if !defined(OPENSSL_NO_CMAC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 static const EVP_CIPHER *evp_cmac_cipher = NULL;
 static char *evp_cmac_name = NULL;
 
@@ -1096,6 +1110,7 @@ static int DSA_verify_loop(void *args)
 #endif
 
 #ifndef OPENSSL_NO_EC
+# ifndef OPENSSL_NO_DEPRECATED_3_0
 static long ecdsa_c[ECDSA_NUM][2];
 static int ECDSA_sign_loop(void *args)
 {
@@ -1136,6 +1151,7 @@ static int ECDSA_verify_loop(void *args)
     }
     return count;
 }
+# endif
 
 /* ******************************************************************** */
 static long ecdh_c[EC_NUM][1];
@@ -1449,16 +1465,16 @@ int speed_main(int argc, char **argv)
                                     EdDSA_SECONDS, SM2_SECONDS };
 
     /* What follows are the buffers and key material. */
-#ifndef OPENSSL_NO_RC5
+#if !defined(OPENSSL_NO_RC5) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     RC5_32_KEY rc5_ks;
 #endif
-#ifndef OPENSSL_NO_RC2
+#if !defined(OPENSSL_NO_RC2) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     RC2_KEY rc2_ks;
 #endif
-#ifndef OPENSSL_NO_IDEA
+#if !defined(OPENSSL_NO_IDEA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     IDEA_KEY_SCHEDULE idea_ks;
 #endif
-#ifndef OPENSSL_NO_SEED
+#if !defined(OPENSSL_NO_SEED) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     SEED_KEY_SCHEDULE seed_ks;
 #endif
 #if !defined(OPENSSL_NO_BF) && !defined(OPENSSL_NO_DEPRECATED_3_0)
@@ -1467,11 +1483,11 @@ int speed_main(int argc, char **argv)
 #if !defined(OPENSSL_NO_CAST) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     CAST_KEY cast_ks;
 #endif
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     static const unsigned char key16[16] = {
         0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
         0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12
     };
-#ifndef OPENSSL_NO_DEPRECATED_3_0
     static const unsigned char key24[24] = {
         0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
         0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12,
@@ -1613,6 +1629,7 @@ int speed_main(int argc, char **argv)
             doit[D_EVP] = 1;
             break;
         case OPT_HMAC:
+#ifndef OPENSSL_NO_DEPRECATED_3_0
             evp_hmac_md = EVP_get_digestbyname(opt_arg());
             if (evp_hmac_md == NULL) {
                 BIO_printf(bio_err, "%s: %s is an unknown digest\n",
@@ -1621,8 +1638,9 @@ int speed_main(int argc, char **argv)
             }
             doit[D_EVP_HMAC] = 1;
             break;
+#endif
         case OPT_CMAC:
-#ifndef OPENSSL_NO_CMAC
+#if !defined(OPENSSL_NO_CMAC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
             evp_cmac_cipher = EVP_get_cipherbyname(opt_arg());
             if (evp_cmac_cipher == NULL) {
                 BIO_printf(bio_err, "%s: %s is an unknown cipher\n",
@@ -1718,7 +1736,7 @@ int speed_main(int argc, char **argv)
             doit[i] = 1;
             continue;
         }
-#ifndef OPENSSL_NO_DES
+#if !defined(OPENSSL_NO_DES) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         if (strcmp(algo, "des") == 0) {
             doit[D_CBC_DES] = doit[D_EDE3_DES] = 1;
             continue;
@@ -1941,7 +1959,7 @@ int speed_main(int argc, char **argv)
         loopargs[i].dsa_key[2] = get_dsa(2048);
     }
 #endif
-#ifndef OPENSSL_NO_DES
+#if !defined(OPENSSL_NO_DES) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_DES] || doit[D_EDE3_DES]) {
         static DES_cblock keys[] = {
             { 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0 }, /* keys[0] */
@@ -1965,23 +1983,23 @@ int speed_main(int argc, char **argv)
         Camellia_set_key(key32, 256, &camellia_ks[2]);
     }
 #endif
-#ifndef OPENSSL_NO_IDEA
+#if !defined(OPENSSL_NO_IDEA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_IDEA])
         IDEA_set_encrypt_key(key16, &idea_ks);
 #endif
-#ifndef OPENSSL_NO_SEED
+#if !defined(OPENSSL_NO_SEED) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_SEED])
         SEED_set_key(key16, &seed_ks);
 #endif
-#ifndef OPENSSL_NO_RC4
+#if !defined(OPENSSL_NO_RC4) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_RC4])
         RC4_set_key(&rc4_ks, 16, key16);
 #endif
-#ifndef OPENSSL_NO_RC2
+#if !defined(OPENSSL_NO_RC2) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_RC2])
         RC2_set_key(&rc2_ks, 16, key16, 128);
 #endif
-#ifndef OPENSSL_NO_RC5
+#if !defined(OPENSSL_NO_RC5) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_RC5])
         if (!RC5_32_set_key(&rc5_ks, 16, key16, 12)) {
             BIO_printf(bio_err, "Failed setting RC5 key\n");
@@ -1997,7 +2015,7 @@ int speed_main(int argc, char **argv)
         CAST_set_key(&cast_ks, 16, key16);
 #endif
 #ifndef SIGALRM
-# ifndef OPENSSL_NO_DES
+#if !defined(OPENSSL_NO_DES) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     BIO_printf(bio_err, "First we calculate the approximate speed ...\n");
     count = 10;
     do {
@@ -2285,7 +2303,7 @@ int speed_main(int argc, char **argv)
     }
 #endif
 
-#ifndef OPENSSL_NO_MD5
+#if !defined(OPENSSL_NO_MD5) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_MD5]) {
         for (testnum = 0; testnum < size_num; testnum++) {
             print_message(names[D_MD5], c[D_MD5][testnum], lengths[testnum],
@@ -2297,6 +2315,7 @@ int speed_main(int argc, char **argv)
         }
     }
 
+# ifndef OPENSSL_NO_DEPRECATED_3_0
     if (doit[D_HMAC]) {
         static const char hmac_key[] = "This is a key...";
         int len = strlen(hmac_key);
@@ -2321,7 +2340,9 @@ int speed_main(int argc, char **argv)
         for (i = 0; i < loopargs_len; i++)
             HMAC_CTX_free(loopargs[i].hctx);
     }
+# endif
 #endif
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     if (doit[D_SHA1]) {
         for (testnum = 0; testnum < size_num; testnum++) {
             print_message(names[D_SHA1], c[D_SHA1][testnum], lengths[testnum],
@@ -2352,6 +2373,7 @@ int speed_main(int argc, char **argv)
             print_result(D_SHA512, testnum, count, d);
         }
     }
+#endif
 #if !defined(OPENSSL_NO_WHIRLPOOL) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_WHIRLPOOL]) {
         for (testnum = 0; testnum < size_num; testnum++) {
@@ -2379,7 +2401,7 @@ int speed_main(int argc, char **argv)
         }
     }
 #endif
-#ifndef OPENSSL_NO_RC4
+#if !defined(OPENSSL_NO_RC4) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_RC4]) {
         for (testnum = 0; testnum < size_num; testnum++) {
             print_message(names[D_RC4], c[D_RC4][testnum], lengths[testnum],
@@ -2391,7 +2413,7 @@ int speed_main(int argc, char **argv)
         }
     }
 #endif
-#ifndef OPENSSL_NO_DES
+#if !defined(OPENSSL_NO_DES) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_DES]) {
         for (testnum = 0; testnum < size_num; testnum++) {
             print_message(names[D_CBC_DES], c[D_CBC_DES][testnum],
@@ -2565,7 +2587,7 @@ int speed_main(int argc, char **argv)
         }
     }
 #endif
-#ifndef OPENSSL_NO_IDEA
+#if !defined(OPENSSL_NO_IDEA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_IDEA]) {
         if (async_jobs > 0) {
             BIO_printf(bio_err, "Async mode is not supported with %s\n",
@@ -2585,7 +2607,7 @@ int speed_main(int argc, char **argv)
         }
     }
 #endif
-#ifndef OPENSSL_NO_SEED
+#if !defined(OPENSSL_NO_SEED) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_SEED]) {
         if (async_jobs > 0) {
             BIO_printf(bio_err, "Async mode is not supported with %s\n",
@@ -2604,7 +2626,7 @@ int speed_main(int argc, char **argv)
         }
     }
 #endif
-#ifndef OPENSSL_NO_RC2
+#if !defined(OPENSSL_NO_RC2) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_RC2]) {
         if (async_jobs > 0) {
             BIO_printf(bio_err, "Async mode is not supported with %s\n",
@@ -2628,7 +2650,7 @@ int speed_main(int argc, char **argv)
         }
     }
 #endif
-#ifndef OPENSSL_NO_RC5
+#if !defined(OPENSSL_NO_RC5) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_CBC_RC5]) {
         if (async_jobs > 0) {
             BIO_printf(bio_err, "Async mode is not supported with %s\n",
@@ -2784,6 +2806,7 @@ int speed_main(int argc, char **argv)
         }
     }
 
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     if (doit[D_EVP_HMAC] && evp_hmac_md != NULL) {
         const char *md_name = OBJ_nid2ln(EVP_MD_type(evp_hmac_md));
 
@@ -2801,8 +2824,9 @@ int speed_main(int argc, char **argv)
             print_result(D_EVP_HMAC, testnum, count, d);
         }
     }
+#endif
 
-#ifndef OPENSSL_NO_CMAC
+#if !defined(OPENSSL_NO_CMAC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (doit[D_EVP_CMAC] && evp_cmac_cipher != NULL) {
         const char *cipher_name = OBJ_nid2ln(EVP_CIPHER_type(evp_cmac_cipher));
 
@@ -2998,6 +3022,7 @@ int speed_main(int argc, char **argv)
 #endif                          /* OPENSSL_NO_DSA */
 
 #ifndef OPENSSL_NO_EC
+# ifndef OPENSSL_NO_DEPRECATED_3_0
     for (testnum = 0; testnum < ECDSA_NUM; testnum++) {
         int st = 1;
 
@@ -3080,6 +3105,7 @@ int speed_main(int argc, char **argv)
             }
         }
     }
+# endif
 
     for (testnum = 0; testnum < EC_NUM; testnum++) {
         int ecdh_checks = 1;
@@ -3376,9 +3402,7 @@ int speed_main(int argc, char **argv)
             st = 0; /* set back to zero */
             /* attach it sooner to rely on main final cleanup */
             loopargs[i].sm2_pkey[testnum] = sm2_pkey;
-            loopargs[i].sigsize = ECDSA_size(EVP_PKEY_get0_EC_KEY(sm2_pkey));
-            if (!EVP_PKEY_set_alias_type(sm2_pkey, EVP_PKEY_SM2))
-                break;
+            loopargs[i].sigsize = EVP_PKEY_size(sm2_pkey);
 
             sm2_pctx = EVP_PKEY_CTX_new(sm2_pkey, NULL);
             sm2_vfy_pctx = EVP_PKEY_CTX_new(sm2_pkey, NULL);
@@ -3386,6 +3410,7 @@ int speed_main(int argc, char **argv)
                 EVP_PKEY_CTX_free(sm2_vfy_pctx);
                 break;
             }
+
             /* attach them directly to respective ctx */
             EVP_MD_CTX_set_pkey_ctx(loopargs[i].sm2_ctx[testnum], sm2_pctx);
             EVP_MD_CTX_set_pkey_ctx(loopargs[i].sm2_vfy_ctx[testnum], sm2_vfy_pctx);
@@ -3492,16 +3517,16 @@ int speed_main(int argc, char **argv)
 #if !defined(OPENSSL_NO_MD2) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         printf("%s ", MD2_options());
 #endif
-#ifndef OPENSSL_NO_RC4
+#if !defined(OPENSSL_NO_RC4) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         printf("%s ", RC4_options());
 #endif
-#ifndef OPENSSL_NO_DES
+#if !defined(OPENSSL_NO_DES) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         printf("%s ", DES_options());
 #endif
 #ifndef OPENSSL_NO_DEPRECATED_3_0
         printf("%s ", AES_options());
 #endif
-#ifndef OPENSSL_NO_IDEA
+#if !defined(OPENSSL_NO_IDEA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         printf("%s ", IDEA_options());
 #endif
 #if !defined(OPENSSL_NO_BF) && !defined(OPENSSL_NO_DEPRECATED_3_0)
@@ -3703,8 +3728,10 @@ int speed_main(int argc, char **argv)
         OPENSSL_free(loopargs[i].secret_b);
 #endif
     }
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     OPENSSL_free(evp_hmac_name);
-#ifndef OPENSSL_NO_CMAC
+#endif
+#if !defined(OPENSSL_NO_CMAC) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     OPENSSL_free(evp_cmac_name);
 #endif
 

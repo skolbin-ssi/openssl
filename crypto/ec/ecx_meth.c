@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * ECDSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include <openssl/x509.h>
@@ -1156,6 +1162,7 @@ static int s390x_pkey_ecd_keygen25519(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
     unsigned char x_dst[32], buff[SHA512_DIGEST_LENGTH];
     ECX_KEY *key;
     unsigned char *privkey = NULL, *pubkey;
+    unsigned int sz;
 
     key = OPENSSL_zalloc(sizeof(*key));
     if (key == NULL) {
@@ -1174,7 +1181,9 @@ static int s390x_pkey_ecd_keygen25519(EVP_PKEY_CTX *ctx, EVP_PKEY *pkey)
     if (RAND_priv_bytes(privkey, ED25519_KEYLEN) <= 0)
         goto err;
 
-    SHA512(privkey, 32, buff);
+    if (!EVP_Digest(privkey, 32, buff, &sz, EVP_sha512(), NULL))
+        goto err;
+
     buff[0] &= 248;
     buff[31] &= 63;
     buff[31] |= 64;

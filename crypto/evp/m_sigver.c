@@ -31,6 +31,9 @@ static int do_sigver_init(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
 {
     EVP_PKEY_CTX *locpctx = NULL;
     EVP_SIGNATURE *signature = NULL;
+    EVP_KEYMGMT *tmp_keymgmt = NULL;
+    const char *supported_sig = NULL;
+    char locmdname[80] = "";     /* 80 chars should be enough */
     void *provkey = NULL;
     int ret;
 
@@ -52,77 +55,73 @@ static int do_sigver_init(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
     locpctx = ctx->pctx;
     evp_pkey_ctx_free_old_ops(locpctx);
 
+    /*
+     * TODO when we stop falling back to legacy, this and the ERR_pop_to_mark()
+     * calls can be removed.
+     */
+    ERR_set_mark();
+
     if (locpctx->keytype == NULL)
         goto legacy;
 
-    if (mdname == NULL) {
-        if (type != NULL) {
-            mdname = EVP_MD_name(type);
-        } else if (pkey != NULL) {
-            /*
-             * TODO(v3.0) work out a better way for EVP_PKEYs with no legacy
-             * component.
-             */
-            if (pkey->pkey.ptr != NULL) {
-                int def_nid;
-                if (EVP_PKEY_get_default_digest_nid(pkey, &def_nid) > 0)
-                    mdname = OBJ_nid2sn(def_nid);
-            }
-        }
+    /* Ensure that the key is provided.  If not, go legacy */
+    tmp_keymgmt = locpctx->keymgmt;
+    provkey = evp_pkey_make_provided(locpctx->pkey, locpctx->libctx,
+                                     &tmp_keymgmt, locpctx->propquery);
+    if (provkey == NULL)
+        goto legacy;
+    if (!EVP_KEYMGMT_up_ref(tmp_keymgmt)) {
+        ERR_clear_last_mark();
+        ERR_raise(ERR_LIB_EVP, EVP_R_INITIALIZATION_ERROR);
+        goto err;
     }
+    EVP_KEYMGMT_free(locpctx->keymgmt);
+    locpctx->keymgmt = tmp_keymgmt;
 
-    if (locpctx->keymgmt == NULL)
-        locpctx->keymgmt = EVP_KEYMGMT_fetch(locpctx->libctx, locpctx->keytype,
-                                             locpctx->propquery);
-    if (locpctx->keymgmt != NULL) {
-        const char *supported_sig = NULL;
+    if (locpctx->keymgmt->query_operation_name != NULL)
+        supported_sig =
+            locpctx->keymgmt->query_operation_name(OSSL_OP_SIGNATURE);
 
-        if (locpctx->keymgmt->query_operation_name != NULL)
-            supported_sig =
-                locpctx->keymgmt->query_operation_name(OSSL_OP_SIGNATURE);
+    /*
+     * If we didn't get a supported sig, assume there is one with the
+     * same name as the key type.
+     */
+    if (supported_sig == NULL)
+        supported_sig = locpctx->keytype;
 
-        /*
-         * If we didn't get a supported sig, assume there is one with the
-         * same name as the key type.
-         */
-        if (supported_sig == NULL)
-            supported_sig = locpctx->keytype;
+    /*
+     * Because we cleared out old ops, we shouldn't need to worry about
+     * checking if signature is already there.
+     */
+    signature = EVP_SIGNATURE_fetch(locpctx->libctx, supported_sig,
+                                    locpctx->propquery);
 
-        /*
-         * Because we cleared out old ops, we shouldn't need to worry about
-         * checking if signature is already there.
-         */
-        signature = EVP_SIGNATURE_fetch(locpctx->libctx, supported_sig,
-                                        locpctx->propquery);
-    }
-
-    if (locpctx->keymgmt == NULL
-        || signature == NULL
+    if (signature == NULL
         || (EVP_KEYMGMT_provider(locpctx->keymgmt)
             != EVP_SIGNATURE_provider(signature))) {
         /*
-         * We don't have the full support we need with provided methods,
-         * let's go see if legacy does.  Also, we don't need to free
-         * ctx->keymgmt here, as it's not necessarily tied to this
-         * operation.  It will be freed by EVP_PKEY_CTX_free().
+         * We don't need to free ctx->keymgmt here, as it's not necessarily
+         * tied to this operation.  It will be freed by EVP_PKEY_CTX_free().
          */
         EVP_SIGNATURE_free(signature);
         goto legacy;
     }
 
+    /*
+     * TODO remove this when legacy is gone
+     * If we don't have the full support we need with provided methods,
+     * let's go see if legacy does.
+     */
+    ERR_pop_to_mark();
+
     /* No more legacy from here down to legacy: */
 
+    if (pctx != NULL)
+        *pctx = locpctx;
+
     locpctx->op.sig.signature = signature;
-
-    provkey =
-        evp_keymgmt_export_to_provider(locpctx->pkey, locpctx->keymgmt, 0);
-    /* If export failed, legacy may be able to pick it up */
-    if (provkey == NULL)
-        goto legacy;
-
     locpctx->operation = ver ? EVP_PKEY_OP_VERIFYCTX
                              : EVP_PKEY_OP_SIGNCTX;
-
     locpctx->op.sig.sigprovctx
         = signature->newctx(ossl_provider_ctx(signature->prov));
     if (locpctx->op.sig.sigprovctx == NULL) {
@@ -131,15 +130,25 @@ static int do_sigver_init(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
     }
     if (type != NULL) {
         ctx->reqdigest = type;
+        if (mdname == NULL)
+            mdname = EVP_MD_name(type);
     } else {
-        /*
-         * This might be requested by a later call to EVP_MD_CTX_md(). In that
-         * case the "explicit fetch" rules apply for that function (as per
-         * man pages), i.e. the ref count is not updated so the EVP_MD should
-         * not be used beyound the lifetime of the EVP_MD_CTX.
-         */
-        ctx->reqdigest = ctx->fetched_digest =
-            EVP_MD_fetch(locpctx->libctx, mdname, props);
+        if (mdname == NULL
+            && EVP_PKEY_get_default_digest_name(locpctx->pkey, locmdname,
+                                                sizeof(locmdname)))
+            mdname = locmdname;
+
+        if (mdname != NULL) {
+            /*
+             * This might be requested by a later call to EVP_MD_CTX_md().
+             * In that case the "explicit fetch" rules apply for that
+             * function (as per man pages), i.e. the ref count is not updated
+             * so the EVP_MD should not be used beyound the lifetime of the
+             * EVP_MD_CTX.
+             */
+            ctx->reqdigest = ctx->fetched_digest =
+                EVP_MD_fetch(locpctx->libctx, mdname, props);
+        }
     }
 
     if (ver) {
@@ -165,9 +174,16 @@ static int do_sigver_init(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
     return 0;
 
  legacy:
+    /*
+     * TODO remove this when legacy is gone
+     * If we don't have the full support we need with provided methods,
+     * let's go see if legacy does.
+     */
+    ERR_pop_to_mark();
+
     if (ctx->pctx->pmeth == NULL) {
         EVPerr(0, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
-        return -2;
+        return 0;
     }
 
     if (!(ctx->pctx->pmeth->flags & EVP_PKEY_FLAG_SIGCTX_CUSTOM)) {

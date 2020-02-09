@@ -30,11 +30,19 @@ struct pkcs8_encrypt_ctx_st {
     void *cbarg;
 };
 
-OSSL_OP_keymgmt_importkey_fn *ossl_prov_get_importkey(const OSSL_DISPATCH *fns);
+OSSL_OP_keymgmt_new_fn *ossl_prov_get_keymgmt_new(const OSSL_DISPATCH *fns);
+OSSL_OP_keymgmt_free_fn *ossl_prov_get_keymgmt_free(const OSSL_DISPATCH *fns);
+OSSL_OP_keymgmt_import_fn *ossl_prov_get_keymgmt_import(const OSSL_DISPATCH *fns);
 
-OSSL_OP_keymgmt_importkey_fn *ossl_prov_get_rsa_importkey(void);
-OSSL_OP_keymgmt_importkey_fn *ossl_prov_get_dh_importkey(void);
-OSSL_OP_keymgmt_importkey_fn *ossl_prov_get_dsa_importkey(void);
+OSSL_OP_keymgmt_new_fn *ossl_prov_get_keymgmt_rsa_new(void);
+OSSL_OP_keymgmt_free_fn *ossl_prov_get_keymgmt_rsa_free(void);
+OSSL_OP_keymgmt_import_fn *ossl_prov_get_keymgmt_rsa_import(void);
+OSSL_OP_keymgmt_new_fn *ossl_prov_get_keymgmt_dh_new(void);
+OSSL_OP_keymgmt_free_fn *ossl_prov_get_keymgmt_dh_free(void);
+OSSL_OP_keymgmt_import_fn *ossl_prov_get_keymgmt_dh_import(void);
+OSSL_OP_keymgmt_new_fn *ossl_prov_get_keymgmt_dsa_new(void);
+OSSL_OP_keymgmt_free_fn *ossl_prov_get_keymgmt_dsa_free(void);
+OSSL_OP_keymgmt_import_fn *ossl_prov_get_keymgmt_dsa_import(void);
 
 int ossl_prov_prepare_dh_params(const void *dh, int nid,
                                 ASN1_STRING **pstr, int *pstrtype);
@@ -54,7 +62,7 @@ int ossl_prov_dsa_pub_to_der(const void *dsa, unsigned char **pder);
 int ossl_prov_dsa_priv_to_der(const void *dsa, unsigned char **pder);
 
 int ossl_prov_print_labeled_bignum(BIO *out, const char *label,
-                                   const BIGNUM *n);
+                                   const BIGNUM *bn);
 int ossl_prov_print_rsa(BIO *out, RSA *rsa, int priv);
 
 enum dh_print_type {

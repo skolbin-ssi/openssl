@@ -73,29 +73,23 @@ struct evp_keymgmt_st {
     CRYPTO_REF_COUNT refcnt;
     CRYPTO_RWLOCK *lock;
 
-    /* Domain parameter routines */
-    OSSL_OP_keymgmt_importdomparams_fn *importdomparams;
-    OSSL_OP_keymgmt_gendomparams_fn *gendomparams;
-    OSSL_OP_keymgmt_freedomparams_fn *freedomparams;
-    OSSL_OP_keymgmt_exportdomparams_fn *exportdomparams;
-    OSSL_OP_keymgmt_importdomparam_types_fn *importdomparam_types;
-    OSSL_OP_keymgmt_exportdomparam_types_fn *exportdomparam_types;
+    /* Constructor(s), destructor, information */
+    OSSL_OP_keymgmt_new_fn *new;
+    OSSL_OP_keymgmt_free_fn *free;
+    OSSL_OP_keymgmt_get_params_fn *get_params;
+    OSSL_OP_keymgmt_gettable_params_fn *gettable_params;
 
-    /* Key routines */
-    OSSL_OP_keymgmt_importkey_fn *importkey;
-    OSSL_OP_keymgmt_genkey_fn *genkey;
-    OSSL_OP_keymgmt_loadkey_fn *loadkey;
-    OSSL_OP_keymgmt_freekey_fn *freekey;
-    OSSL_OP_keymgmt_exportkey_fn *exportkey;
-    OSSL_OP_keymgmt_importkey_types_fn *importkey_types;
-    OSSL_OP_keymgmt_exportkey_types_fn *exportkey_types;
+    /* Key object checking */
     OSSL_OP_keymgmt_query_operation_name_fn *query_operation_name;
-} /* EVP_KEYMGMT */ ;
+    OSSL_OP_keymgmt_has_fn *has;
+    OSSL_OP_keymgmt_validate_fn *validate;
 
-struct keymgmt_data_st {
-    OPENSSL_CTX *ctx;
-    const char *properties;
-};
+    /* Import and export routines */
+    OSSL_OP_keymgmt_import_fn *import;
+    OSSL_OP_keymgmt_import_types_fn *import_types;
+    OSSL_OP_keymgmt_export_fn *export;
+    OSSL_OP_keymgmt_export_types_fn *export_types;
+} /* EVP_KEYMGMT */ ;
 
 struct evp_keyexch_st {
     int name_id;
@@ -270,8 +264,11 @@ void evp_pkey_ctx_free_old_ops(EVP_PKEY_CTX *ctx);
 
 /* OSSL_PROVIDER * is only used to get the library context */
 const char *evp_first_name(OSSL_PROVIDER *prov, int name_id);
-int evp_is_a(OSSL_PROVIDER *prov, int number, const char *name);
+int evp_is_a(OSSL_PROVIDER *prov, int number,
+             const char *legacy_name, const char *name);
 void evp_names_do_all(OSSL_PROVIDER *prov, int number,
                       void (*fn)(const char *name, void *data),
                       void *data);
 int evp_cipher_cache_constants(EVP_CIPHER *cipher);
+void *evp_pkey_make_provided(EVP_PKEY *pk, OPENSSL_CTX *libctx,
+                             EVP_KEYMGMT **keymgmt, const char *propquery);
