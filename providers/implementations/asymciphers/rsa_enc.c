@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * RSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/core_numbers.h>
@@ -118,6 +124,12 @@ static int rsa_encrypt(void *vprsactx, unsigned char *out, size_t *outlen,
             PROVerr(0, ERR_R_MALLOC_FAILURE);
             return 0;
         }
+        if (prsactx->oaep_md == NULL) {
+            OPENSSL_free(tbuf);
+            prsactx->oaep_md = EVP_MD_fetch(prsactx->libctx, "SHA-1", NULL);
+            PROVerr(0, ERR_R_INTERNAL_ERROR);
+            return 0;
+        }
         ret = RSA_padding_add_PKCS1_OAEP_mgf1(tbuf, rsasize, in, inlen,
                                               prsactx->oaep_label,
                                               prsactx->oaep_labellen,
@@ -194,6 +206,13 @@ static int rsa_decrypt(void *vprsactx, unsigned char *out, size_t *outlen,
             return 0;
         }
         if (prsactx->pad_mode == RSA_PKCS1_OAEP_PADDING) {
+            if (prsactx->oaep_md == NULL) {
+                prsactx->oaep_md = EVP_MD_fetch(prsactx->libctx, "SHA-1", NULL);
+                if (prsactx->oaep_md == NULL) {
+                    PROVerr(0, ERR_R_INTERNAL_ERROR);
+                    return 0;
+                }
+            }
             ret = RSA_padding_check_PKCS1_OAEP_mgf1(out, outsize, tbuf,
                                                     len, len,
                                                     prsactx->oaep_label,

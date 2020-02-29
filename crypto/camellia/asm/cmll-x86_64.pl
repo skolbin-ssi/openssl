@@ -687,6 +687,7 @@ $code.=<<___;
 .align	16
 Camellia_cbc_encrypt:
 .cfi_startproc
+	endbranch
 	cmp	\$0,%rdx
 	je	.Lcbc_abort
 	push	%rbx
@@ -1152,4 +1153,4 @@ ___
 
 $code =~ s/\`([^\`]*)\`/eval $1/gem;
 print $code;
-close STDOUT or die "error closing STDOUT";
+close STDOUT or die "error closing STDOUT: $!";

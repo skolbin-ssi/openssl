@@ -7,6 +7,12 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * DSA low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <stdio.h>
 #include "internal/cryptlib.h"
 #include "crypto/bn.h"
@@ -61,8 +67,7 @@ const DSA_METHOD *DSA_OpenSSL(void)
     return &openssl_dsa_meth;
 }
 
-DSA_SIG *dsa_do_sign_int(OPENSSL_CTX *libctx, const unsigned char *dgst,
-                         int dlen, DSA *dsa)
+DSA_SIG *dsa_do_sign_int(const unsigned char *dgst, int dlen, DSA *dsa)
 {
     BIGNUM *kinv = NULL;
     BIGNUM *m, *blind, *blindm, *tmp;
@@ -90,7 +95,7 @@ DSA_SIG *dsa_do_sign_int(OPENSSL_CTX *libctx, const unsigned char *dgst,
     if (ret->r == NULL || ret->s == NULL)
         goto err;
 
-    ctx = BN_CTX_new_ex(libctx);
+    ctx = BN_CTX_new_ex(dsa->libctx);
     if (ctx == NULL)
         goto err;
     m = BN_CTX_get(ctx);
@@ -180,7 +185,7 @@ DSA_SIG *dsa_do_sign_int(OPENSSL_CTX *libctx, const unsigned char *dgst,
 
 static DSA_SIG *dsa_do_sign(const unsigned char *dgst, int dlen, DSA *dsa)
 {
-    return dsa_do_sign_int(NULL, dgst, dlen, dsa);
+    return dsa_do_sign_int(dgst, dlen, dsa);
 }
 
 static int dsa_sign_setup_no_digest(DSA *dsa, BN_CTX *ctx_in,

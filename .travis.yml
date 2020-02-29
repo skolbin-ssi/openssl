@@ -20,7 +20,6 @@ before_install:
 
 arch:
     - amd64
-    - arm64
 
 os:
     - linux
@@ -60,16 +59,23 @@ matrix:
                       - clang-6.0
           env: EXTENDED_TEST="yes" CONFIG_OPTS="no-asm enable-ubsan enable-rc5 enable-md2 enable-ssl3 enable-ssl3-method enable-nextprotoneg no-shared enable-buildtest-c++ -fno-sanitize=alignment -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -D__NO_STRING_INLINES -Wno-unused-command-line-argument" MATRIX_EVAL="CC=clang-6.0 && CXX=clang++-6.0"
         - os: linux
+          arch: arm64
+          compiler: gcc
+          env: CONFIG_OPTS="" MAKEVERBOSE="yes"
+        - os: linux
+          arch: arm64
+          compiler: gcc
+          env: CONFIG_OPTS="no-asm no-deprecated enable-buildtest-c++ --strict-warnings -D_DEFAULT_SOURCE" BUILDONLY="yes" NOUPDATE="yes" CHECKDOCS="yes" CPPFLAGS="-ansi"
+        - os: linux
           arch: s390x
           compiler: gcc
           env: CONFIG_OPTS="--strict-warnings"
         - os: linux-ppc64le
-          sudo: false
-          compiler: clang
-          env: CONFIG_OPTS="--strict-warnings -D__NO_STRING_INLINES"
+          compiler: gcc
+          env: CONFIG_OPTS="--strict-warnings"
         - os: linux
           compiler: gcc
-          env: CONFIG_OPTS="--strict-warnings" COMMENT="Move to the BORINGTEST build when interoperable"
+          env: CONFIG_OPTS="--strict-warnings no-ec enable-trace enable-ssl-trace enable-zlib enable-zlib-dynamic enable-crypto-mdebug enable-crypto-mdebug-backtrace enable-egd" COMMENT="Move to the BORINGTEST build when interoperable"
         - os: linux
           dist: trusty
           compiler: clang
@@ -146,20 +152,14 @@ matrix:
             # exit-zero treats all errors as warnings.  The GitHub editor is 127 chars wide
             - flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
           script: true
+        - os: linux
+          compiler: gcc
+          env: CONFIGURE_TARGET="linux-generic32" CONFIG_OPTS="--strict-warnings no-shared no-dso no-pic no-aria no-async no-autoload-config no-blake2 no-bf no-camellia no-cast no-chacha no-cmac no-cms no-cmp no-comp no-ct no-des no-dgram no-dh no-dsa no-dtls no-ec2m no-engine no-filenames no-gost no-idea no-ktls no-mdc2 no-md4 no-multiblock no-nextprotoneg no-ocsp no-ocb no-poly1305 no-psk no-rc2 no-rc4 no-rmd160 no-seed no-siphash no-siv no-sm2 no-sm3 no-sm4 no-srp no-srtp no-ssl3 no-ssl3-method no-ts no-ui-console no-whirlpool no-asm -DOPENSSL_NO_SECURE_MEMORY -DOPENSSL_SMALL_FOOTPRINT"
     exclude:
         - os: linux
           compiler: clang
         - os: osx
           compiler: gcc
-        - arch: arm64
-          os: osx
-        # arm64 times out when using -fsanitize=address
-        # The amd64 build should be sufficient to test this.
-        # Note: the env line must exactly match the env line from the build
-        # matrix above which contains the `-fsanitize=address` option.
-        # TODO: come up with a better way of doing this that is less error prone.
-        - arch: arm64
-          env: CONFIG_OPTS="no-asm -Werror --debug no-afalgeng no-shared enable-rc5 enable-md2 -fsanitize=address" LSAN_OPTIONS="report_objects=1"
 
 
 before_script:
@@ -188,13 +188,17 @@ before_script:
           if which ccache >/dev/null && test "$BORINGSSL_TESTS" != yes; then
               CC="ccache $CC";
           fi;
-          $srcdir/config -v $CONFIG_OPTS;
+          if [ -n "$CONFIGURE_TARGET" ]; then
+              $srcdir/Configure $CONFIGURE_TARGET $CONFIG_OPTS;
+          else
+              $srcdir/config -v $CONFIG_OPTS;
+          fi;
       fi
     - ./configdata.pm --dump
     - cd $top
 
 script:
-    - if [ -z "$BUILDONLY" ]; then
+    - if [ -z "$BUILDONLY" ] && [ -z "$MAKEVERBOSE" ] ; then
           make="make -s";
       else
           make="make";
@@ -208,7 +212,7 @@ script:
     - if [ -n "$DESTDIR" ]; then
           cd _build;
       fi
-    - if ! $make update; then
+    - if [ -z "$NOUPDATE" ] && ! $make update; then
           echo -e '\052\052 FAILED -- MAKE UPDATE';
           travis_terminate 1;
       fi

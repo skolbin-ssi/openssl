@@ -94,12 +94,12 @@
 #ifndef OPENSSL_NO_CAST
 # include <openssl/cast.h>
 #endif
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 # include <openssl/rsa.h>
 # include "./testrsa.h"
 #endif
 #include <openssl/x509.h>
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 # include <openssl/dsa.h>
 # include "./testdsa.h"
 #endif
@@ -406,7 +406,7 @@ static const OPT_PAIR doit_choices[] = {
 
 static double results[ALGOR_NUM][SIZE_NUM];
 
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 enum { R_DSA_512, R_DSA_1024, R_DSA_2048, DSA_NUM };
 static const OPT_PAIR dsa_choices[DSA_NUM] = {
     {"dsa512", R_DSA_512},
@@ -416,7 +416,7 @@ static const OPT_PAIR dsa_choices[DSA_NUM] = {
 static double dsa_results[DSA_NUM][2];  /* 2 ops: sign then verify */
 #endif  /* OPENSSL_NO_DSA */
 
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 enum {
     R_RSA_512, R_RSA_1024, R_RSA_2048, R_RSA_3072, R_RSA_4096, R_RSA_7680,
     R_RSA_15360, RSA_NUM
@@ -542,10 +542,10 @@ typedef struct loopargs_st {
     unsigned char *key;
     unsigned int siglen;
     size_t sigsize;
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     RSA *rsa_key[RSA_NUM];
 #endif
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     DSA *dsa_key[DSA_NUM];
 #endif
 #ifndef OPENSSL_NO_EC
@@ -1021,7 +1021,7 @@ static int EVP_CMAC_loop(void *args)
 }
 #endif
 
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 static long rsa_c[RSA_NUM][2];  /* # RSA iteration test */
 
 static int RSA_sign_loop(void *args)
@@ -1066,7 +1066,7 @@ static int RSA_verify_loop(void *args)
 }
 #endif
 
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
 static long dsa_c[DSA_NUM][2];
 static int DSA_sign_loop(void *args)
 {
@@ -1503,7 +1503,7 @@ int speed_main(int argc, char **argv)
 #if !defined(OPENSSL_NO_CAMELLIA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     CAMELLIA_KEY camellia_ks[3];
 #endif
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     static const struct {
         const unsigned char *data;
         unsigned int length;
@@ -1520,7 +1520,7 @@ int speed_main(int argc, char **argv)
     uint8_t rsa_doit[RSA_NUM] = { 0 };
     int primes = RSA_DEFAULT_PRIME_NUM;
 #endif
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     static const unsigned int dsa_bits[DSA_NUM] = { 512, 1024, 2048 };
     uint8_t dsa_doit[DSA_NUM] = { 0 };
 #endif
@@ -1707,8 +1707,10 @@ int speed_main(int argc, char **argv)
                 goto end;
             break;
         case OPT_PRIMES:
+#ifndef OPENSSL_NO_DEPRECATED_3_0
             if (!opt_int(opt_arg(), &primes))
                 goto end;
+#endif
             break;
         case OPT_SECONDS:
             seconds.sym = seconds.rsa = seconds.dsa = seconds.ecdsa
@@ -1746,7 +1748,7 @@ int speed_main(int argc, char **argv)
             doit[D_SHA1] = doit[D_SHA256] = doit[D_SHA512] = 1;
             continue;
         }
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         if (strcmp(algo, "openssl") == 0) /* just for compatibility */
             continue;
         if (strncmp(algo, "rsa", 3) == 0) {
@@ -1760,7 +1762,7 @@ int speed_main(int argc, char **argv)
             }
         }
 #endif
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         if (strncmp(algo, "dsa", 3) == 0) {
             if (algo[3] == '\0') {
                 memset(dsa_doit, 1, sizeof(dsa_doit));
@@ -1909,10 +1911,10 @@ int speed_main(int argc, char **argv)
     if (argc == 0 && !doit[D_EVP] && !doit[D_EVP_HMAC] && !doit[D_EVP_CMAC]) {
         memset(doit, 1, sizeof(doit));
         doit[D_EVP] = doit[D_EVP_HMAC] = doit[D_EVP_CMAC] = 0;
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         memset(rsa_doit, 1, sizeof(rsa_doit));
 #endif
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         memset(dsa_doit, 1, sizeof(dsa_doit));
 #endif
 #ifndef OPENSSL_NO_EC
@@ -1933,7 +1935,7 @@ int speed_main(int argc, char **argv)
                    "You have chosen to measure elapsed time "
                    "instead of user CPU time.\n");
 
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     for (i = 0; i < loopargs_len; i++) {
         if (primes > RSA_DEFAULT_PRIME_NUM) {
             /* for multi-prime RSA, skip this */
@@ -1952,7 +1954,7 @@ int speed_main(int argc, char **argv)
         }
     }
 #endif
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     for (i = 0; i < loopargs_len; i++) {
         loopargs[i].dsa_key[0] = get_dsa(512);
         loopargs[i].dsa_key[1] = get_dsa(1024);
@@ -2103,7 +2105,7 @@ int speed_main(int argc, char **argv)
         c[D_IGE_256_AES][i] = c[D_IGE_256_AES][i - 1] * l0 / l1;
     }
 
-#  ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     rsa_c[R_RSA_512][0] = count / 2000;
     rsa_c[R_RSA_512][1] = count / 400;
     for (i = 1; i < RSA_NUM; i++) {
@@ -2120,7 +2122,7 @@ int speed_main(int argc, char **argv)
     }
 #  endif
 
-#  ifndef OPENSSL_NO_DSA
+#  if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     dsa_c[R_DSA_512][0] = count / 1000;
     dsa_c[R_DSA_512][1] = count / 1000 / 2;
     for (i = 1; i < DSA_NUM; i++) {
@@ -2859,7 +2861,7 @@ int speed_main(int argc, char **argv)
         if (RAND_bytes(loopargs[i].buf, 36) <= 0)
             goto end;
 
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     for (testnum = 0; testnum < RSA_NUM; testnum++) {
         int st = 0;
         if (!rsa_doit[testnum])
@@ -2955,7 +2957,7 @@ int speed_main(int argc, char **argv)
         if (RAND_bytes(loopargs[i].buf, 36) <= 0)
             goto end;
 
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     for (testnum = 0; testnum < DSA_NUM; testnum++) {
         int st = 0;
         if (!dsa_doit[testnum])
@@ -3564,7 +3566,7 @@ int speed_main(int argc, char **argv)
         }
         printf("\n");
     }
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     testnum = 1;
     for (k = 0; k < RSA_NUM; k++) {
         if (!rsa_doit[k])
@@ -3582,7 +3584,7 @@ int speed_main(int argc, char **argv)
                    rsa_results[k][0], rsa_results[k][1]);
     }
 #endif
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     testnum = 1;
     for (k = 0; k < DSA_NUM; k++) {
         if (!dsa_doit[k])
@@ -3691,11 +3693,11 @@ int speed_main(int argc, char **argv)
         OPENSSL_free(loopargs[i].buf_malloc);
         OPENSSL_free(loopargs[i].buf2_malloc);
 
-#ifndef OPENSSL_NO_RSA
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         for (k = 0; k < RSA_NUM; k++)
             RSA_free(loopargs[i].rsa_key[k]);
 #endif
-#ifndef OPENSSL_NO_DSA
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
         for (k = 0; k < DSA_NUM; k++)
             DSA_free(loopargs[i].dsa_key[k]);
 #endif
@@ -3887,7 +3889,9 @@ static int do_multi(int multi, int size_num)
                 sstrsep(&p, sep);
                 for (j = 0; j < size_num; ++j)
                     results[alg][j] += atof(sstrsep(&p, sep));
-            } else if (strncmp(buf, "+F2:", 4) == 0) {
+            }
+#if !defined(OPENSSL_NO_RSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
+            else if (strncmp(buf, "+F2:", 4) == 0) {
                 int k;
                 double d;
 
@@ -3901,7 +3905,8 @@ static int do_multi(int multi, int size_num)
                 d = atof(sstrsep(&p, sep));
                 rsa_results[k][1] += d;
             }
-# ifndef OPENSSL_NO_DSA
+#endif
+#if !defined(OPENSSL_NO_DSA) && !defined(OPENSSL_NO_DEPRECATED_3_0)
             else if (strncmp(buf, "+F3:", 4) == 0) {
                 int k;
                 double d;

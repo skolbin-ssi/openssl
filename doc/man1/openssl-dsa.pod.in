@@ -42,6 +42,9 @@ B<openssl> B<dsa>
 
 =head1 DESCRIPTION
 
+This command has been deprecated.
+The L<openssl-pkey(1)> command should be used instead.
+
 This command processes DSA keys. They can be converted between various
 forms and their components printed out. B<Note> This command uses the
 traditional SSLeay compatible format for private key encryption: newer
@@ -124,6 +127,9 @@ a public key.
 
 =head1 EXAMPLES
 
+Examples equivalent to these can be found in the documentation for the
+non-deprecated L<openssl-pkey(1)> command.
+
 To remove the pass phrase on a DSA private key:
 
  openssl dsa -in key.pem -out keyout.pem
@@ -147,10 +153,15 @@ To just output the public part of a private key:
 =head1 SEE ALSO
 
 L<openssl(1)>,
+L<openssl-pkey(1)>,
 L<openssl-dsaparam(1)>,
 L<openssl-gendsa(1)>,
 L<openssl-rsa(1)>,
 L<openssl-genrsa(1)>
+
+=head1 HISTORY
+
+This command was deprecated in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 

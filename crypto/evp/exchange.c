@@ -43,7 +43,7 @@ static void *evp_keyexch_from_dispatch(int name_id,
                                        OSSL_PROVIDER *prov)
 {
     EVP_KEYEXCH *exchange = NULL;
-    int fncnt = 0, paramfncnt = 0;
+    int fncnt = 0, sparamfncnt = 0, gparamfncnt = 0;
 
     if ((exchange = evp_keyexch_new(prov)) == NULL) {
         ERR_raise(ERR_LIB_EVP, ERR_R_MALLOC_FAILURE);
@@ -88,28 +88,44 @@ static void *evp_keyexch_from_dispatch(int name_id,
                 break;
             exchange->dupctx = OSSL_get_OP_keyexch_dupctx(fns);
             break;
+        case OSSL_FUNC_KEYEXCH_GET_CTX_PARAMS:
+            if (exchange->get_ctx_params != NULL)
+                break;
+            exchange->get_ctx_params = OSSL_get_OP_keyexch_get_ctx_params(fns);
+            gparamfncnt++;
+            break;
+        case OSSL_FUNC_KEYEXCH_GETTABLE_CTX_PARAMS:
+            if (exchange->gettable_ctx_params != NULL)
+                break;
+            exchange->gettable_ctx_params
+                = OSSL_get_OP_keyexch_gettable_ctx_params(fns);
+            gparamfncnt++;
+            break;
         case OSSL_FUNC_KEYEXCH_SET_CTX_PARAMS:
             if (exchange->set_ctx_params != NULL)
                 break;
             exchange->set_ctx_params = OSSL_get_OP_keyexch_set_ctx_params(fns);
-            paramfncnt++;
+            sparamfncnt++;
             break;
         case OSSL_FUNC_KEYEXCH_SETTABLE_CTX_PARAMS:
             if (exchange->settable_ctx_params != NULL)
                 break;
             exchange->settable_ctx_params
                 = OSSL_get_OP_keyexch_settable_ctx_params(fns);
-            paramfncnt++;
+            sparamfncnt++;
             break;
         }
     }
-    if (fncnt != 4 || (paramfncnt != 0 && paramfncnt != 2)) {
+    if (fncnt != 4
+            || (gparamfncnt != 0 && gparamfncnt != 2)
+            || (sparamfncnt != 0 && sparamfncnt != 2)) {
         /*
          * In order to be a consistent set of functions we must have at least
          * a complete set of "exchange" functions: init, derive, newctx,
          * and freectx. The set_ctx_params and settable_ctx_params functions are
          * optional, but if one of them is present then the other one must also
-         * be present. The dupctx and set_peer functions are optional.
+         * be present. Same goes for get_ctx_params and gettable_ctx_params.
+         * The dupctx and set_peer functions are optional.
          */
         EVPerr(EVP_F_EVP_KEYEXCH_FROM_DISPATCH,
                EVP_R_INVALID_PROVIDER_FUNCTIONS);
@@ -293,8 +309,12 @@ int EVP_PKEY_derive_set_peer(EVP_PKEY_CTX *ctx, EVP_PKEY *peer)
         return -2;
     }
 
-    provkey = evp_keymgmt_util_export_to_provider(peer, ctx->keymgmt);
-    /* If export failed, legacy may be able to pick it up */
+    provkey = evp_pkey_make_provided(peer, ctx->libctx, &ctx->keymgmt,
+                                     ctx->propquery);
+    /*
+     * If making the key provided wasn't possible, legacy may be able to pick
+     * it up
+     */
     if (provkey == NULL)
         goto legacy;
     return ctx->op.kex.exchange->set_peer(ctx->op.kex.exchprovctx, provkey);
@@ -303,6 +323,10 @@ int EVP_PKEY_derive_set_peer(EVP_PKEY_CTX *ctx, EVP_PKEY *peer)
 #ifdef FIPS_MODE
     return ret;
 #else
+    /*
+     * TODO(3.0) investigate the case where the operation is deemed legacy,
+     * but the given peer key is provider only.
+     */
     if (ctx->pmeth == NULL
         || !(ctx->pmeth->derive != NULL
              || ctx->pmeth->encrypt != NULL

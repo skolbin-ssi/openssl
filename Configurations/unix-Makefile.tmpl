@@ -464,16 +464,11 @@ all: build_sw build_docs
 test: tests
 {- dependmagic('tests'); -}: build_programs_nodep build_modules_nodep link-utils
 	@ : {- output_off() if $disabled{tests}; "" -}
-	( cd test; \
-	  mkdir -p test-runs; \
-	  SRCTOP=../$(SRCDIR) \
-	  BLDTOP=../$(BLDDIR) \
-	  RESULT_D=test-runs \
+	( SRCTOP=$(SRCDIR) \
+	  BLDTOP=$(BLDDIR) \
 	  PERL="$(PERL)" \
 	  EXE_EXT={- platform->binext() -} \
-	  OPENSSL_ENGINES=`cd ../$(BLDDIR)/engines 2>/dev/null && pwd` \
-	  OPENSSL_MODULES=`cd ../$(BLDDIR)/providers 2>/dev/null && pwd` \
-	  $(PERL) ../$(SRCDIR)/test/run_tests.pl $(TESTS) )
+	  $(PERL) $(SRCDIR)/test/run_tests.pl $(TESTS) )
 	@ : {- if ($disabled{tests}) { output_on(); } else { output_off(); } "" -}
 	@echo "Tests are not supported with your chosen Configure options"
 	@ : {- output_on() if !$disabled{tests}; "" -}
@@ -952,10 +947,10 @@ generate: generate_apps generate_crypto_bn generate_crypto_objects \
 
 .PHONY: doc-nits cmd-nits
 doc-nits: build_generated
-	(cd $(SRCDIR); $(PERL) util/find-doc-nits -n -l -e )
+	$(PERL) $(SRCDIR)/util/find-doc-nits -n -l -e
 
 cmd-nits: build_generated apps/openssl
-	(cd $(SRCDIR); $(PERL) util/find-doc-nits -c )
+	$(PERL) $(SRCDIR)/util/find-doc-nits -c
 
 # Test coverage is a good idea for the future
 #coverage: $(PROGRAMS) $(TESTPROGRAMS)
@@ -1083,12 +1078,12 @@ tar:
 
 # Helper targets #####################################################
 
-link-utils: $(BLDDIR)/util/opensslwrap.sh
+link-utils: $(BLDDIR)/util/opensslwrap.sh $(BLDDIR)/util/wrap.pl
 
-$(BLDDIR)/util/opensslwrap.sh: configdata.pm
+$(BLDDIR)/util/opensslwrap.sh $(BLDDIR)/util/wrap.pl: configdata.pm
 	@if [ "$(SRCDIR)" != "$(BLDDIR)" ]; then \
 	    mkdir -p "$(BLDDIR)/util"; \
-	    ln -sf "../$(SRCDIR)/util/opensslwrap.sh" "$(BLDDIR)/util"; \
+	    ln -sf "../$(SRCDIR)/util/`basename "$@"`" "$(BLDDIR)/util"; \
 	fi
 
 FORCE:
@@ -1190,10 +1185,7 @@ reconfigure reconf:
 	  my $pod = $args{generator}->[0];
 	  return <<"EOF";
 $args{src}: $pod
-	pod2html "--podroot=\$(SRCDIR)/doc" --htmldir=.. \\
-		 --podpath=man1:man3:man5:man7 --infile=$pod "--title=$title" \\
-	| \$(PERL) -pe 's|href="http://man\\.he\\.net/(man\\d/[^"]+)(?:\\.html)?"|href="../\$1.html|g;' \\
-	> \$\@
+	\$(PERL) \$(SRCDIR)/util/mkpod2html.pl -i "$pod" -o \$\@ -t "$title" -r "\$(SRCDIR)/doc"
 EOF
       } elsif ($args{src} =~ /\.(\d)$/) {
 	  my $section = $1;
@@ -1202,8 +1194,7 @@ EOF
 	  return <<"EOF";
 $args{src}: $pod
 	pod2man --name=$name --section=$section --center=OpenSSL \\
-		--release=\$(VERSION) $pod \\
-	> \$\@
+		--release=\$(VERSION) $pod >\$\@
 EOF
       } elsif (platform->isdef($args{src})) {
           my $target = platform->def($args{src});

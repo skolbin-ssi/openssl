@@ -372,16 +372,10 @@ int X509_signature_print(BIO *bp, const X509_ALGOR *alg,
 
 int X509_sign(X509 *x, EVP_PKEY *pkey, const EVP_MD *md);
 int X509_sign_ctx(X509 *x, EVP_MD_CTX *ctx);
-# ifndef OPENSSL_NO_OCSP
-int X509_http_nbio(OCSP_REQ_CTX *rctx, X509 **pcert);
-# endif
 int X509_REQ_sign(X509_REQ *x, EVP_PKEY *pkey, const EVP_MD *md);
 int X509_REQ_sign_ctx(X509_REQ *x, EVP_MD_CTX *ctx);
 int X509_CRL_sign(X509_CRL *x, EVP_PKEY *pkey, const EVP_MD *md);
 int X509_CRL_sign_ctx(X509_CRL *x, EVP_MD_CTX *ctx);
-# ifndef OPENSSL_NO_OCSP
-int X509_CRL_http_nbio(OCSP_REQ_CTX *rctx, X509_CRL **pcrl);
-# endif
 int NETSCAPE_SPKI_sign(NETSCAPE_SPKI *x, EVP_PKEY *pkey, const EVP_MD *md);
 
 int X509_pubkey_digest(const X509 *data, const EVP_MD *type,
@@ -394,6 +388,13 @@ int X509_REQ_digest(const X509_REQ *data, const EVP_MD *type,
                     unsigned char *md, unsigned int *len);
 int X509_NAME_digest(const X509_NAME *data, const EVP_MD *type,
                      unsigned char *md, unsigned int *len);
+
+# if !defined(OPENSSL_NO_SOCK)
+X509 *X509_load_http(const char *url, BIO *bio, BIO *rbio, int timeout);
+#  define X509_http_nbio(url) X509_load_http(url, NULL, NULL, 0)
+X509_CRL *X509_CRL_load_http(const char *url, BIO *bio, BIO *rbio, int timeout);
+#  define X509_CRL_http_nbio(url) X509_CRL_load_http(url, NULL,  NULL, 0)
+# endif
 
 # ifndef OPENSSL_NO_STDIO
 X509 *d2i_X509_fp(FILE *fp, X509 **x509);
@@ -622,15 +623,17 @@ X509_INFO *X509_INFO_new(void);
 void X509_INFO_free(X509_INFO *a);
 char *X509_NAME_oneline(const X509_NAME *a, char *buf, int size);
 
-int ASN1_verify(i2d_of_void *i2d, X509_ALGOR *algor1,
-                ASN1_BIT_STRING *signature, char *data, EVP_PKEY *pkey);
+DEPRECATEDIN_3_0(int ASN1_verify(i2d_of_void *i2d, X509_ALGOR *algor1,
+                                 ASN1_BIT_STRING *signature, char *data,
+                                 EVP_PKEY *pkey))
 
-int ASN1_digest(i2d_of_void *i2d, const EVP_MD *type, char *data,
-                unsigned char *md, unsigned int *len);
+DEPRECATEDIN_3_0(int ASN1_digest(i2d_of_void *i2d, const EVP_MD *type,
+                                 char *data,
+                                 unsigned char *md, unsigned int *len))
 
-int ASN1_sign(i2d_of_void *i2d, X509_ALGOR *algor1,
-              X509_ALGOR *algor2, ASN1_BIT_STRING *signature,
-              char *data, EVP_PKEY *pkey, const EVP_MD *type);
+DEPRECATEDIN_3_0(int ASN1_sign(i2d_of_void *i2d, X509_ALGOR *algor1,
+                               X509_ALGOR *algor2, ASN1_BIT_STRING *signature,
+                               char *data, EVP_PKEY *pkey, const EVP_MD *type))
 
 int ASN1_item_digest(const ASN1_ITEM *it, const EVP_MD *type, void *data,
                      unsigned char *md, unsigned int *len);

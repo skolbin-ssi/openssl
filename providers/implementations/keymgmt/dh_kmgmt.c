@@ -7,15 +7,22 @@
  * https://www.openssl.org/source/license.html
  */
 
+/*
+ * DH low level APIs are deprecated for public use, but still ok for
+ * internal use.
+ */
+#include "internal/deprecated.h"
+
 #include <openssl/core_numbers.h>
 #include <openssl/core_names.h>
 #include <openssl/bn.h>
-#include <openssl/dh.h>
 #include <openssl/params.h>
 #include "internal/param_build.h"
 #include "crypto/dh.h"
 #include "prov/implementations.h"
 #include "prov/providercommon.h"
+#include "prov/provider_ctx.h"
+#include "crypto/dh.h"
 
 static OSSL_OP_keymgmt_new_fn dh_newdata;
 static OSSL_OP_keymgmt_free_fn dh_freedata;
@@ -86,9 +93,9 @@ static int params_to_key(DH *dh, const OSSL_PARAM params[])
         return 0;
 
     param_priv_key =
-        OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_DH_PRIV_KEY);
+        OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_PRIV_KEY);
     param_pub_key =
-        OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_DH_PUB_KEY);
+        OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_PUB_KEY);
 
     /*
      * DH documentation says that a public key must be present if a
@@ -110,7 +117,7 @@ static int params_to_key(DH *dh, const OSSL_PARAM params[])
     return 1;
 
  err:
-    BN_free(priv_key);
+    BN_clear_free(priv_key);
     BN_free(pub_key);
     return 0;
 }
@@ -126,10 +133,10 @@ static int key_to_params(DH *dh, OSSL_PARAM_BLD *tmpl)
 
     DH_get0_key(dh, &pub_key, &priv_key);
     if (priv_key != NULL
-        && !ossl_param_bld_push_BN(tmpl, OSSL_PKEY_PARAM_DH_PRIV_KEY, priv_key))
+        && !ossl_param_bld_push_BN(tmpl, OSSL_PKEY_PARAM_PRIV_KEY, priv_key))
         return 0;
     if (pub_key != NULL
-        && !ossl_param_bld_push_BN(tmpl, OSSL_PKEY_PARAM_DH_PUB_KEY, pub_key))
+        && !ossl_param_bld_push_BN(tmpl, OSSL_PKEY_PARAM_PUB_KEY, pub_key))
         return 0;
 
     return 1;
@@ -137,7 +144,7 @@ static int key_to_params(DH *dh, OSSL_PARAM_BLD *tmpl)
 
 static void *dh_newdata(void *provctx)
 {
-    return DH_new();
+    return dh_new_with_ctx(PROV_LIBRARY_CONTEXT_OF(provctx));
 }
 
 static void dh_freedata(void *keydata)
@@ -214,9 +221,9 @@ static int dh_export(void *keydata, int selection, OSSL_CALLBACK *param_cb,
     OSSL_PARAM_BN(OSSL_PKEY_PARAM_FFC_P, NULL, 0),      \
     OSSL_PARAM_BN(OSSL_PKEY_PARAM_FFC_G, NULL, 0)
 # define DH_IMEXPORTABLE_PUBLIC_KEY                     \
-    OSSL_PARAM_BN(OSSL_PKEY_PARAM_DH_PUB_KEY, NULL, 0)
+    OSSL_PARAM_BN(OSSL_PKEY_PARAM_PUB_KEY, NULL, 0)
 # define DH_IMEXPORTABLE_PRIVATE_KEY                    \
-    OSSL_PARAM_BN(OSSL_PKEY_PARAM_DH_PRIV_KEY, NULL, 0)
+    OSSL_PARAM_BN(OSSL_PKEY_PARAM_PRIV_KEY, NULL, 0)
 static const OSSL_PARAM dh_all_types[] = {
     DH_IMEXPORTABLE_PARAMETERS,
     DH_IMEXPORTABLE_PUBLIC_KEY,
