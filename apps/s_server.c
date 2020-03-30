@@ -707,7 +707,7 @@ static int alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen,
     if (SSL_select_next_proto
         ((unsigned char **)out, outlen, alpn_ctx->data, alpn_ctx->len, in,
          inlen) != OPENSSL_NPN_NEGOTIATED) {
-        return SSL_TLSEXT_ERR_NOACK;
+        return SSL_TLSEXT_ERR_ALERT_FATAL;
     }
 
     if (!s_quiet) {
@@ -757,7 +757,8 @@ typedef enum OPTION_choice {
     OPT_R_ENUM,
     OPT_S_ENUM,
     OPT_V_ENUM,
-    OPT_X_ENUM
+    OPT_X_ENUM,
+    OPT_PROV_ENUM
 } OPTION_CHOICE;
 
 const OPTIONS s_server_options[] = {
@@ -992,6 +993,7 @@ const OPTIONS s_server_options[] = {
     {"chainCAfile", OPT_CHAINCAFILE, '<',
      "CA file for certificate chain (PEM format)"},
     OPT_X_OPTIONS,
+    OPT_PROV_OPTIONS,
     {NULL}
 };
 
@@ -1566,6 +1568,10 @@ int s_server_main(int argc, char *argv[])
             if (!opt_rand(o))
                 goto end;
             break;
+        case OPT_PROV_CASES:
+            if (!opt_provider(o))
+                goto end;
+            break;
         case OPT_SERVERNAME:
             tlsextcbp.servername = opt_arg();
             break;
@@ -1952,7 +1958,7 @@ int s_server_main(int argc, char *argv[])
         BIO_printf(bio_s_out, "Setting secondary ctx parameters\n");
 
         if (sdebug)
-            ssl_ctx_security_debug(ctx, sdebug);
+            ssl_ctx_security_debug(ctx2, sdebug);
 
         if (session_id_prefix) {
             if (strlen(session_id_prefix) >= 32)
@@ -2087,10 +2093,16 @@ int s_server_main(int argc, char *argv[])
         SSL_CTX_set_psk_server_callback(ctx, psk_server_cb);
     }
 
-    if (!SSL_CTX_use_psk_identity_hint(ctx, psk_identity_hint)) {
-        BIO_printf(bio_err, "error setting PSK identity hint to context\n");
-        ERR_print_errors(bio_err);
-        goto end;
+    if (psk_identity_hint != NULL) {
+        if (min_version == TLS1_3_VERSION) {
+            BIO_printf(bio_s_out, "PSK warning: there is NO identity hint in TLSv1.3\n");
+        } else {
+            if (!SSL_CTX_use_psk_identity_hint(ctx, psk_identity_hint)) {
+                BIO_printf(bio_err, "error setting PSK identity hint to context\n");
+                ERR_print_errors(bio_err);
+                goto end;
+            }
+        }
     }
 #endif
     if (psksessf != NULL) {

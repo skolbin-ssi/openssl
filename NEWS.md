@@ -31,6 +31,7 @@ OpenSSL 3.0
   * enable-crypto-mdebug and enable-crypto-mdebug-backtrace were mostly
     disabled; the project uses address sanitize/leak-detect instead.
   * Added OSSL_SERIALIZER, a generic serializer API.
+  * Added OSSL_PARAM_BLD, an easier to use API to OSSL_PARAM.
   * Added error raising macros, ERR_raise() and ERR_raise_data().
   * Deprecated ERR_put_error().
   * Added OSSL_PROVIDER_available(), to check provider availibility.
@@ -56,6 +57,15 @@ OpenSSL 3.0
 
 OpenSSL 1.1.1
 -------------
+
+### Major changes between OpenSSL 1.1.1e and OpenSSL 1.1.1f [under development] ###
+
+  * 
+
+### Major changes between OpenSSL 1.1.1d and OpenSSL 1.1.1e [17 Mar 2020] ###
+
+  * Fixed an overflow bug in the x64_64 Montgomery squaring procedure
+    used in exponentiation with 512-bit moduli ([CVE-2019-1551][])
 
 ### Major changes between OpenSSL 1.1.1c and OpenSSL 1.1.1d [10 Sep 2019] ###
 
@@ -1295,6 +1305,7 @@ OpenSSL 0.9.x
 [CVE-2019-1563]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1563
 [CVE-2019-1559]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1559
 [CVE-2019-1552]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1552
+[CVE-2019-1551]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1551
 [CVE-2019-1549]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1549
 [CVE-2019-1547]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1547
 [CVE-2019-1543]: https://www.openssl.org/news/vulnerabilities.html#CVE-2019-1543

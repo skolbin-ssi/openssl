@@ -44,12 +44,6 @@ static void tear_down(CMP_VFY_TEST_FIXTURE *fixture)
     OPENSSL_free(fixture);
 }
 
-static int print_to_bio_out(const char *func, const char *file, int line,
-                            OSSL_CMP_severity level, const char *msg)
-{
-    return OSSL_CMP_print_to_bio(bio_out, func, file, line, level, msg);
-}
-
 static time_t test_time_valid = 0, test_time_after_expiration = 0;
 
 static CMP_VFY_TEST_FIXTURE *set_up(const char *const test_case_name)
@@ -69,7 +63,7 @@ static CMP_VFY_TEST_FIXTURE *set_up(const char *const test_case_name)
         return NULL;
     }
     X509_VERIFY_PARAM_set_time(X509_STORE_get0_param(ts), test_time_valid);
-    X509_STORE_set_verify_cb(ts, OSSL_CMP_print_cert_verify_cb);
+    X509_STORE_set_verify_cb(ts, X509_STORE_CTX_print_verify_cb);
     return fixture;
 }
 
@@ -313,7 +307,7 @@ static int test_validate_msg_signature_sender_cert_absent(void)
 }
 
 
-static int test_validate_with_sender(X509_NAME *name, int expected)
+static int test_validate_with_sender(const X509_NAME *name, int expected)
 {
     SETUP_TEST_FIXTURE(CMP_VFY_TEST_FIXTURE, set_up);
     fixture->expected = expected;
@@ -437,8 +431,7 @@ static void setup_check_received(CMP_VFY_TEST_FIXTURE **fixture, int expected,
                                                       nonce_data, nonce_len))) {
         tear_down((*fixture));
         (*fixture) = NULL;
-    }
-    else if (trid_data != NULL) {
+    } else if (trid_data != NULL) {
         ASN1_OCTET_STRING *trid = ASN1_OCTET_STRING_new();
         if (trid == NULL
             || !ASN1_OCTET_STRING_set(trid, trid_data,
@@ -548,6 +541,11 @@ int setup_tests(void)
     test_time_valid = mktime(&ts); /* February 18th 2018 */
     ts.tm_year += 10;              /* February 18th 2028 */
     test_time_after_expiration = mktime(&ts);
+
+    if (!test_skip_common_options()) {
+        TEST_error("Error parsing test options\n");
+        return 0;
+    }
 
     RAND_bytes(rand_data, OSSL_CMP_TRANSACTIONID_LENGTH);
     if (!TEST_ptr(server_f = test_get_argument(0))

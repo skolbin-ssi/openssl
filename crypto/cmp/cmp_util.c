@@ -144,7 +144,7 @@ int OSSL_CMP_print_to_bio(BIO *bio, const char *component, const char *file,
 
 #define ERR_PRINT_BUF_SIZE 4096
 /* this is similar to ERR_print_errors_cb, but uses the CMP-specific cb type */
-void OSSL_CMP_print_errors_cb(OSSL_cmp_log_cb_t log_fn)
+void OSSL_CMP_print_errors_cb(OSSL_CMP_log_cb_t log_fn)
 {
     unsigned long err;
     char msg[ERR_PRINT_BUF_SIZE];
@@ -318,6 +318,26 @@ STACK_OF(X509) *ossl_cmp_build_cert_chain(STACK_OF(X509) *certs, X509 *cert)
     X509_STORE_free(store);
     X509_STORE_CTX_free(csc);
     return result;
+}
+
+int ossl_cmp_sk_ASN1_UTF8STRING_push_str(STACK_OF(ASN1_UTF8STRING) *sk,
+                                         const char *text)
+{
+    ASN1_UTF8STRING *utf8string;
+
+    if (!ossl_assert(sk != NULL && text != NULL))
+        return 0;
+    if ((utf8string = ASN1_UTF8STRING_new()) == NULL)
+        return 0;
+    if (!ASN1_STRING_set(utf8string, text, -1))
+        goto err;
+    if (!sk_ASN1_UTF8STRING_push(sk, utf8string))
+        goto err;
+    return 1;
+
+ err:
+    ASN1_UTF8STRING_free(utf8string);
+    return 0;
 }
 
 int ossl_cmp_asn1_octet_string_set1(ASN1_OCTET_STRING **tgt,

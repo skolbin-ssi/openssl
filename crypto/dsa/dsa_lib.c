@@ -32,7 +32,7 @@ int DSA_set_ex_data(DSA *d, int idx, void *arg)
     return CRYPTO_set_ex_data(&d->ex_data, idx, arg);
 }
 
-void *DSA_get_ex_data(DSA *d, int idx)
+void *DSA_get_ex_data(const DSA *d, int idx)
 {
     return CRYPTO_get_ex_data(&d->ex_data, idx);
 }
@@ -336,4 +336,9 @@ int DSA_security_bits(const DSA *d)
 int DSA_bits(const DSA *dsa)
 {
     return BN_num_bits(dsa->params.p);
+}
+
+FFC_PARAMS *dsa_get0_params(DSA *dsa)
+{
+    return &dsa->params;
 }

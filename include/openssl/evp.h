@@ -294,6 +294,10 @@ int (*EVP_CIPHER_meth_get_ctrl(const EVP_CIPHER *cipher))(EVP_CIPHER_CTX *,
 # define         EVP_CIPH_FLAG_PIPELINE          0X800000
 /* For provider implementations that handle  ASN1 get/set param themselves */
 # define         EVP_CIPH_FLAG_CUSTOM_ASN1       0x1000000
+/* For ciphers generating unprotected CMS attributes */
+# define         EVP_CIPH_FLAG_CIPHER_WITH_MAC   0x2000000
+/* For supplementary wrap cipher support */
+# define         EVP_CIPH_FLAG_GET_WRAP_CIPHER   0x4000000
 
 /*
  * Cipher context flag to indicate we can handle wrap mode: if allowed in
@@ -372,6 +376,10 @@ int (*EVP_CIPHER_meth_get_ctrl(const EVP_CIPHER *cipher))(EVP_CIPHER_CTX *,
 # define         EVP_CTRL_GET_IV                         0x26
 /* Tell the cipher it's doing a speed test (SIV disallows multiple ops) */
 # define         EVP_CTRL_SET_SPEED                      0x27
+/* Get the unprotectedAttrs from cipher ctx */
+# define         EVP_CTRL_PROCESS_UNPROTECTED            0x28
+/* Get the supplementary wrap cipher */
+#define          EVP_CTRL_GET_WRAP_CIPHER                0x29
 
 /* Padding modes */
 #define EVP_PADDING_PKCS7       1
@@ -678,8 +686,8 @@ __owur int EVP_DigestVerify(EVP_MD_CTX *ctx, const unsigned char *sigret,
                             size_t tbslen);
 
 int EVP_DigestSignInit_ex(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
-                          const char *mdname, const char *props,
-                          EVP_PKEY *pkey);
+                          const char *mdname, const char *props, EVP_PKEY *pkey,
+                          OPENSSL_CTX *libctx);
 /*__owur*/ int EVP_DigestSignInit(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
                                   const EVP_MD *type, ENGINE *e,
                                   EVP_PKEY *pkey);
@@ -689,7 +697,7 @@ __owur int EVP_DigestSignFinal(EVP_MD_CTX *ctx, unsigned char *sigret,
 
 int EVP_DigestVerifyInit_ex(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
                             const char *mdname, const char *props,
-                            EVP_PKEY *pkey);
+                            EVP_PKEY *pkey, OPENSSL_CTX *libctx);
 __owur int EVP_DigestVerifyInit(EVP_MD_CTX *ctx, EVP_PKEY_CTX **pctx,
                                 const EVP_MD *type, ENGINE *e,
                                 EVP_PKEY *pkey);
@@ -1104,6 +1112,7 @@ int EVP_PKEY_security_bits(const EVP_PKEY *pkey);
 int EVP_PKEY_size(const EVP_PKEY *pkey);
 int EVP_PKEY_set_type(EVP_PKEY *pkey, int type);
 int EVP_PKEY_set_type_str(EVP_PKEY *pkey, const char *str, int len);
+int EVP_PKEY_set_type_by_keymgmt(EVP_PKEY *pkey, EVP_KEYMGMT *keymgmt);
 int EVP_PKEY_set_alias_type(EVP_PKEY *pkey, int type);
 # ifndef OPENSSL_NO_ENGINE
 int EVP_PKEY_set1_engine(EVP_PKEY *pkey, ENGINE *e);
@@ -1259,6 +1268,7 @@ int EVP_PBE_get(int *ptype, int *ppbe_nid, size_t num);
 # define ASN1_PKEY_CTRL_SET1_TLS_ENCPT   0x9
 # define ASN1_PKEY_CTRL_GET1_TLS_ENCPT   0xa
 # define ASN1_PKEY_CTRL_SUPPORTS_MD_NID  0xb
+# define ASN1_PKEY_CTRL_CMS_IS_RI_TYPE_SUPPORTED 0xc
 
 int EVP_PKEY_asn1_get_count(void);
 const EVP_PKEY_ASN1_METHOD *EVP_PKEY_asn1_get0(int idx);
@@ -1587,6 +1597,7 @@ int EVP_PKEY_paramgen_init(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_paramgen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey);
 int EVP_PKEY_keygen_init(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_keygen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey);
+int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey);
 int EVP_PKEY_check(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_public_check(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_param_check(EVP_PKEY_CTX *ctx);

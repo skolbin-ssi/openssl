@@ -85,7 +85,7 @@ OSSL_CORE_MAKE_FUNC(int, core_set_error_mark, (const OSSL_PROVIDER *prov))
 # define OSSL_FUNC_CORE_CLEAR_LAST_ERROR_MARK  9
 OSSL_CORE_MAKE_FUNC(int, core_clear_last_error_mark,
                     (const OSSL_PROVIDER *prov))
-# define OSSL_FUNC_CORE_POP_ERROR_TO_MARK 10
+# define OSSL_FUNC_CORE_POP_ERROR_TO_MARK     10
 OSSL_CORE_MAKE_FUNC(int, core_pop_error_to_mark, (const OSSL_PROVIDER *prov))
 
 /* Memory allocation, freeing, clearing. */
@@ -134,6 +134,7 @@ OSSL_CORE_MAKE_FUNC(void,
 #define OSSL_FUNC_BIO_READ_EX                 42
 #define OSSL_FUNC_BIO_FREE                    43
 #define OSSL_FUNC_BIO_VPRINTF                 44
+#define OSSL_FUNC_BIO_VSNPRINTF               45
 
 OSSL_CORE_MAKE_FUNC(BIO *, BIO_new_file, (const char *filename, const char *mode))
 OSSL_CORE_MAKE_FUNC(BIO *, BIO_new_membuf, (const void *buf, int len))
@@ -142,6 +143,8 @@ OSSL_CORE_MAKE_FUNC(int, BIO_read_ex, (BIO *bio, void *data, size_t data_len,
 OSSL_CORE_MAKE_FUNC(int, BIO_free, (BIO *bio))
 OSSL_CORE_MAKE_FUNC(int, BIO_vprintf, (BIO *bio, const char *format,
                                        va_list args))
+OSSL_CORE_MAKE_FUNC(int, BIO_vsnprintf,
+                   (char *buf, size_t n, const char *fmt, va_list args))
 
 #define OSSL_FUNC_SELF_TEST_CB               100
 OSSL_CORE_MAKE_FUNC(void, self_test_cb, (OPENSSL_CTX *ctx, OSSL_CALLBACK **cb,
@@ -380,10 +383,31 @@ OSSL_CORE_MAKE_FUNC(int, OP_kdf_set_ctx_params,
 # define OSSL_KEYMGMT_SELECT_ALL                \
     ( OSSL_KEYMGMT_SELECT_KEYPAIR | OSSL_KEYMGMT_SELECT_ALL_PARAMETERS )
 
-/* Basic key object creation, destruction */
+/* Basic key object creation */
 # define OSSL_FUNC_KEYMGMT_NEW                         1
-# define OSSL_FUNC_KEYMGMT_FREE                        9
 OSSL_CORE_MAKE_FUNC(void *, OP_keymgmt_new, (void *provctx))
+
+/* Generation, a more complex constructor */
+# define OSSL_FUNC_KEYMGMT_GEN_INIT                    3
+# define OSSL_FUNC_KEYMGMT_GEN_SET_TEMPLATE            4
+# define OSSL_FUNC_KEYMGMT_GEN_SET_PARAMS              5
+# define OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS         6
+# define OSSL_FUNC_KEYMGMT_GEN                         7
+# define OSSL_FUNC_KEYMGMT_GEN_CLEANUP                 8
+OSSL_CORE_MAKE_FUNC(void *, OP_keymgmt_gen_init,
+                    (void *provctx, int selection))
+OSSL_CORE_MAKE_FUNC(int, OP_keymgmt_gen_set_template,
+                    (void *genctx, void *templ))
+OSSL_CORE_MAKE_FUNC(int, OP_keymgmt_gen_set_params,
+                    (void *genctx, const OSSL_PARAM params[]))
+OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *,
+                    OP_keymgmt_gen_settable_params, (void *provctx))
+OSSL_CORE_MAKE_FUNC(void *, OP_keymgmt_gen,
+                    (void *genctx, OSSL_CALLBACK *cb, void *cbarg))
+OSSL_CORE_MAKE_FUNC(void, OP_keymgmt_gen_cleanup, (void *genctx))
+
+/* Basic key object destruction */
+# define OSSL_FUNC_KEYMGMT_FREE                        9
 OSSL_CORE_MAKE_FUNC(void, OP_keymgmt_free, (void *keydata))
 
 /* Key object information, with discovery */
@@ -412,7 +436,13 @@ OSSL_CORE_MAKE_FUNC(int, OP_keymgmt_has, (void *keydata, int selection))
 # define OSSL_FUNC_KEYMGMT_VALIDATE                   22
 OSSL_CORE_MAKE_FUNC(int, OP_keymgmt_validate, (void *keydata, int selection))
 
-/* Import and export functions, with ddiscovery */
+/* Key checks - matching */
+# define OSSL_FUNC_KEYMGMT_MATCH                      23
+OSSL_CORE_MAKE_FUNC(int, OP_keymgmt_match,
+                    (const void *keydata1, const void *keydata2,
+                     int selection))
+
+/* Import and export functions, with discovery */
 # define OSSL_FUNC_KEYMGMT_IMPORT                     40
 # define OSSL_FUNC_KEYMGMT_IMPORT_TYPES               41
 # define OSSL_FUNC_KEYMGMT_EXPORT                     42
@@ -426,6 +456,12 @@ OSSL_CORE_MAKE_FUNC(int, OP_keymgmt_export,
                      OSSL_CALLBACK *param_cb, void *cbarg))
 OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, OP_keymgmt_export_types,
                     (int selection))
+
+/* Copy function, only works for matching keymgmt */
+# define OSSL_FUNC_KEYMGMT_COPY                       44
+OSSL_CORE_MAKE_FUNC(int, OP_keymgmt_copy,
+                    ( void *keydata_to, const void *keydata_from,
+                     int selection))
 
 /* Key Exchange */
 
@@ -468,19 +504,21 @@ OSSL_CORE_MAKE_FUNC(const OSSL_PARAM *, OP_keyexch_gettable_ctx_params,
 # define OSSL_FUNC_SIGNATURE_DIGEST_SIGN_INIT        8
 # define OSSL_FUNC_SIGNATURE_DIGEST_SIGN_UPDATE      9
 # define OSSL_FUNC_SIGNATURE_DIGEST_SIGN_FINAL      10
-# define OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_INIT     11
-# define OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_UPDATE   12
-# define OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_FINAL    13
-# define OSSL_FUNC_SIGNATURE_FREECTX                14
-# define OSSL_FUNC_SIGNATURE_DUPCTX                 15
-# define OSSL_FUNC_SIGNATURE_GET_CTX_PARAMS         16
-# define OSSL_FUNC_SIGNATURE_GETTABLE_CTX_PARAMS    17
-# define OSSL_FUNC_SIGNATURE_SET_CTX_PARAMS         18
-# define OSSL_FUNC_SIGNATURE_SETTABLE_CTX_PARAMS    19
-# define OSSL_FUNC_SIGNATURE_GET_CTX_MD_PARAMS      20
-# define OSSL_FUNC_SIGNATURE_GETTABLE_CTX_MD_PARAMS 21
-# define OSSL_FUNC_SIGNATURE_SET_CTX_MD_PARAMS      22
-# define OSSL_FUNC_SIGNATURE_SETTABLE_CTX_MD_PARAMS 23
+# define OSSL_FUNC_SIGNATURE_DIGEST_SIGN            11
+# define OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_INIT     12
+# define OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_UPDATE   13
+# define OSSL_FUNC_SIGNATURE_DIGEST_VERIFY_FINAL    14
+# define OSSL_FUNC_SIGNATURE_DIGEST_VERIFY          15
+# define OSSL_FUNC_SIGNATURE_FREECTX                16
+# define OSSL_FUNC_SIGNATURE_DUPCTX                 17
+# define OSSL_FUNC_SIGNATURE_GET_CTX_PARAMS         18
+# define OSSL_FUNC_SIGNATURE_GETTABLE_CTX_PARAMS    19
+# define OSSL_FUNC_SIGNATURE_SET_CTX_PARAMS         20
+# define OSSL_FUNC_SIGNATURE_SETTABLE_CTX_PARAMS    21
+# define OSSL_FUNC_SIGNATURE_GET_CTX_MD_PARAMS      22
+# define OSSL_FUNC_SIGNATURE_GETTABLE_CTX_MD_PARAMS 23
+# define OSSL_FUNC_SIGNATURE_SET_CTX_MD_PARAMS      24
+# define OSSL_FUNC_SIGNATURE_SETTABLE_CTX_MD_PARAMS 25
 
 OSSL_CORE_MAKE_FUNC(void *, OP_signature_newctx, (void *provctx))
 OSSL_CORE_MAKE_FUNC(int, OP_signature_sign_init, (void *ctx, void *provkey))
@@ -510,6 +548,9 @@ OSSL_CORE_MAKE_FUNC(int, OP_signature_digest_sign_update,
 OSSL_CORE_MAKE_FUNC(int, OP_signature_digest_sign_final,
                     (void *ctx, unsigned char *sig, size_t *siglen,
                      size_t sigsize))
+OSSL_CORE_MAKE_FUNC(int, OP_signature_digest_sign,
+                    (void *ctx, unsigned char *sigret, size_t *siglen,
+                     size_t sigsize, const unsigned char *tbs, size_t tbslen))
 OSSL_CORE_MAKE_FUNC(int, OP_signature_digest_verify_init,
                     (void *ctx, const char *mdname, const char *props,
                      void *provkey))
@@ -517,6 +558,9 @@ OSSL_CORE_MAKE_FUNC(int, OP_signature_digest_verify_update,
                     (void *ctx, const unsigned char *data, size_t datalen))
 OSSL_CORE_MAKE_FUNC(int, OP_signature_digest_verify_final,
                     (void *ctx, const unsigned char *sig, size_t siglen))
+OSSL_CORE_MAKE_FUNC(int, OP_signature_digest_verify,
+                    (void *ctx, const unsigned char *sig, size_t siglen,
+                     const unsigned char *tbs, size_t tbslen))
 OSSL_CORE_MAKE_FUNC(void, OP_signature_freectx, (void *ctx))
 OSSL_CORE_MAKE_FUNC(void *, OP_signature_dupctx, (void *ctx))
 OSSL_CORE_MAKE_FUNC(int, OP_signature_get_ctx_params,

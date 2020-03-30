@@ -744,7 +744,15 @@ WORK_STATE ossl_statem_server_pre_work(SSL *s, WORK_STATE wst)
     case TLS_ST_SW_CHANGE:
         if (SSL_IS_TLS13(s))
             break;
-        s->session->cipher = s->s3.tmp.new_cipher;
+        /* Writes to s->session are only safe for initial handshakes */
+        if (s->session->cipher == NULL) {
+            s->session->cipher = s->s3.tmp.new_cipher;
+        } else if (s->session->cipher != s->s3.tmp.new_cipher) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR,
+                     SSL_F_OSSL_STATEM_SERVER_PRE_WORK,
+                     ERR_R_INTERNAL_ERROR);
+            return WORK_ERROR;
+        }
         if (!s->method->ssl3_enc->setup_key_block(s)) {
             /* SSLfatal() already called */
             return WORK_ERROR;
@@ -948,9 +956,11 @@ WORK_STATE ossl_statem_server_post_work(SSL *s, WORK_STATE wst)
         }
 #endif
         if (SSL_IS_TLS13(s)) {
+            /* TLS 1.3 gets the secret size from the handshake md */
+            size_t dummy;
             if (!s->method->ssl3_enc->generate_master_secret(s,
                         s->master_secret, s->handshake_secret, 0,
-                        &s->session->master_key_length)
+                        &dummy)
                 || !s->method->ssl3_enc->change_cipher_state(s,
                         SSL3_CC_APPLICATION | SSL3_CHANGE_CIPHER_SERVER_WRITE))
             /* SSLfatal() already called */
@@ -3896,7 +3906,14 @@ static int construct_stateless_ticket(SSL *s, WPACKET *pkt, uint32_t age_add,
         }
         iv_len = EVP_CIPHER_CTX_iv_length(ctx);
     } else {
-        const EVP_CIPHER *cipher = EVP_aes_256_cbc();
+        EVP_CIPHER *cipher = EVP_CIPHER_fetch(s->ctx->libctx, "AES-256-CBC",
+                                              s->ctx->propq);
+
+        if (cipher == NULL) {
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_CONSTRUCT_STATELESS_TICKET,
+                     SSL_R_ALGORITHM_FETCH_FAILED);
+            goto err;
+        }
 
         iv_len = EVP_CIPHER_iv_length(cipher);
         if (RAND_bytes_ex(s->ctx->libctx, iv, iv_len) <= 0
@@ -3905,10 +3922,12 @@ static int construct_stateless_ticket(SSL *s, WPACKET *pkt, uint32_t age_add,
                 || !ssl_hmac_init(hctx, tctx->ext.secure->tick_hmac_key,
                                   sizeof(tctx->ext.secure->tick_hmac_key),
                                   "SHA256")) {
+            EVP_CIPHER_free(cipher);
             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_CONSTRUCT_STATELESS_TICKET,
                      ERR_R_INTERNAL_ERROR);
             goto err;
         }
+        EVP_CIPHER_free(cipher);
         memcpy(key_name, tctx->ext.tick_key_name,
                sizeof(tctx->ext.tick_key_name));
     }

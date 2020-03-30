@@ -15,7 +15,7 @@ use OpenSSL::Test qw/:DEFAULT srctop_file/;
 
 setup("test_req");
 
-plan tests => 15;
+plan tests => 16;
 
 require_ok(srctop_file('test','recipes','tconversion.pl'));
 
@@ -41,6 +41,34 @@ ok(!run(app([@addext_args, "-addext", $val, "-addext", $val])));
 ok(!run(app([@addext_args, "-addext", $val, "-addext", $val2])));
 ok(!run(app([@addext_args, "-addext", $val, "-addext", $val3])));
 ok(!run(app([@addext_args, "-addext", $val2, "-addext", $val3])));
+
+subtest "generating alt certificate requests with RSA" => sub {
+    plan tests => 3;
+
+    SKIP: {
+        skip "RSA is not supported by this OpenSSL build", 2
+            if disabled("rsa");
+
+        ok(run(app(["openssl", "req",
+                    "-config", srctop_file("test", "test.cnf"),
+                    "-section", "altreq",
+                    "-new", "-out", "testreq-rsa.pem", "-utf8",
+                    "-key", srctop_file("test", "testrsa.pem")])),
+           "Generating request");
+
+        ok(run(app(["openssl", "req",
+                    "-config", srctop_file("test", "test.cnf"),
+                    "-verify", "-in", "testreq-rsa.pem", "-noout"])),
+           "Verifying signature on request");
+
+        ok(run(app(["openssl", "req",
+                    "-config", srctop_file("test", "test.cnf"),
+                    "-section", "altreq",
+                    "-verify", "-in", "testreq-rsa.pem", "-noout"])),
+           "Verifying signature on request");
+    }
+};
+
 
 subtest "generating certificate requests with RSA" => sub {
     plan tests => 2;
@@ -163,27 +191,27 @@ subtest "generating SM2 certificate requests" => sub {
         ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-new", "-key", srctop_file("test", "certs", "sm2.key"),
-                    "-sigopt", "sm2_id:1234567812345678",
+                    "-sigopt", "distid:1234567812345678",
                     "-out", "testreq-sm2.pem", "-sm3"])),
            "Generating SM2 certificate request");
 
         ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-verify", "-in", "testreq-sm2.pem", "-noout",
-                    "-sm2-id", "1234567812345678", "-sm3"])),
+                    "-vfyopt", "distid:1234567812345678", "-sm3"])),
            "Verifying signature on SM2 certificate request");
 
         ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-new", "-key", srctop_file("test", "certs", "sm2.key"),
-                    "-sigopt", "sm2_hex_id:DEADBEEF",
+                    "-sigopt", "hexdistid:DEADBEEF",
                     "-out", "testreq-sm2.pem", "-sm3"])),
            "Generating SM2 certificate request with hex id");
 
         ok(run(app(["openssl", "req",
                     "-config", srctop_file("test", "test.cnf"),
                     "-verify", "-in", "testreq-sm2.pem", "-noout",
-                    "-sm2-hex-id", "DEADBEEF", "-sm3"])),
+                    "-vfyopt", "hexdistid:DEADBEEF", "-sm3"])),
            "Verifying signature on SM2 certificate request");
     }
 };

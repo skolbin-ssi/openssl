@@ -373,7 +373,7 @@ static const OSSL_ALGORITHM deflt_keyexch[] = {
     { "DH:dhKeyAgreement", "provider=default", dh_keyexch_functions },
 #endif
 #ifndef OPENSSL_NO_EC
-    { "ECDH:id-ecPublicKey", "provider=default", ecdh_keyexch_functions },
+    { "ECDH", "provider=default", ecdh_keyexch_functions },
     { "X25519", "provider=default", x25519_keyexch_functions },
     { "X448", "provider=default", x448_keyexch_functions },
 #endif
@@ -385,6 +385,11 @@ static const OSSL_ALGORITHM deflt_signature[] = {
     { "DSA:dsaEncryption", "provider=default", dsa_signature_functions },
 #endif
     { "RSA:rsaEncryption", "provider=default", rsa_signature_functions },
+#ifndef OPENSSL_NO_EC
+    { "ED25519:Ed25519", "provider=default", ed25519_signature_functions },
+    { "ED448:Ed448", "provider=default", ed448_signature_functions },
+    { "ECDSA", "provider=default", ecdsa_signature_functions },
+#endif
     { NULL, NULL, NULL }
 };
 
@@ -405,6 +410,8 @@ static const OSSL_ALGORITHM deflt_keymgmt[] = {
     { "EC:id-ecPublicKey", "provider=default", ec_keymgmt_functions },
     { "X25519", "provider=default", x25519_keymgmt_functions },
     { "X448", "provider=default", x448_keymgmt_functions },
+    { "ED25519", "provider=default", ed25519_keymgmt_functions },
+    { "ED448", "provider=default", ed448_keymgmt_functions },
 #endif
     { NULL, NULL, NULL }
 };
@@ -471,17 +478,17 @@ static const OSSL_ALGORITHM deflt_serializer[] = {
 #endif
 
 #ifndef OPENSSL_NO_EC
-    { "X25519", "provider=default,format=text,type=private",
+    { "X25519", "provider=default,fips=yes,format=text,type=private",
       x25519_priv_print_serializer_functions },
-    { "X25519", "provider=default,format=text,type=public",
+    { "X25519", "provider=default,fips=yes,format=text,type=public",
       x25519_pub_print_serializer_functions },
-    { "X25519", "provider=default,format=der,type=private",
+    { "X25519", "provider=default,fips=yes,format=der,type=private",
       x25519_priv_der_serializer_functions },
-    { "X25519", "provider=default,format=der,type=public",
+    { "X25519", "provider=default,fips=yes,format=der,type=public",
       x25519_pub_der_serializer_functions },
-    { "X25519", "provider=default,format=pem,type=private",
+    { "X25519", "provider=default,fips=yes,format=pem,type=private",
       x25519_priv_pem_serializer_functions },
-    { "X25519", "provider=default,format=pem,type=public",
+    { "X25519", "provider=default,fips=yes,format=pem,type=public",
       x25519_pub_pem_serializer_functions },
 
     { "X448", "provider=default,format=text,type=private",
@@ -496,8 +503,52 @@ static const OSSL_ALGORITHM deflt_serializer[] = {
       x448_priv_pem_serializer_functions },
     { "X448", "provider=default,format=pem,type=public",
       x448_pub_pem_serializer_functions },
-#endif
 
+    { "ED25519", "provider=default,fips=yes,format=text,type=private",
+      ed25519_priv_print_serializer_functions },
+    { "ED25519", "provider=default,fips=yes,format=text,type=public",
+      ed25519_pub_print_serializer_functions },
+    { "ED25519", "provider=default,fips=yes,format=der,type=private",
+      ed25519_priv_der_serializer_functions },
+    { "ED25519", "provider=default,fips=yes,format=der,type=public",
+      ed25519_pub_der_serializer_functions },
+    { "ED25519", "provider=default,fips=yes,format=pem,type=private",
+      ed25519_priv_pem_serializer_functions },
+    { "ED25519", "provider=default,fips=yes,format=pem,type=public",
+      ed25519_pub_pem_serializer_functions },
+
+    { "ED448", "provider=default,format=text,type=private",
+      ed448_priv_print_serializer_functions },
+    { "ED448", "provider=default,format=text,type=public",
+      ed448_pub_print_serializer_functions },
+    { "ED448", "provider=default,format=der,type=private",
+      ed448_priv_der_serializer_functions },
+    { "ED448", "provider=default,format=der,type=public",
+      ed448_pub_der_serializer_functions },
+    { "ED448", "provider=default,format=pem,type=private",
+      ed448_priv_pem_serializer_functions },
+    { "ED448", "provider=default,format=pem,type=public",
+      ed448_pub_pem_serializer_functions },
+
+    { "EC", "provider=default,fips=yes,format=text,type=private",
+      ec_priv_text_serializer_functions },
+    { "EC", "provider=default,fips=yes,format=text,type=public",
+      ec_pub_text_serializer_functions },
+    { "EC", "provider=default,fips=yes,format=text,type=parameters",
+      ec_param_text_serializer_functions },
+    { "EC", "provider=default,fips=yes,format=der,type=private",
+      ec_priv_der_serializer_functions },
+    { "EC", "provider=default,fips=yes,format=der,type=public",
+      ec_pub_der_serializer_functions },
+    { "EC", "provider=default,fips=yes,format=der,type=parameters",
+      ec_param_der_serializer_functions },
+    { "EC", "provider=default,fips=yes,format=pem,type=private",
+      ec_priv_pem_serializer_functions },
+    { "EC", "provider=default,fips=yes,format=pem,type=public",
+      ec_pub_pem_serializer_functions },
+    { "EC", "provider=default,fips=yes,format=pem,type=parameters",
+      ec_param_pem_serializer_functions },
+#endif
     { NULL, NULL, NULL }
 };
 

@@ -81,16 +81,26 @@ struct evp_keymgmt_st {
     OSSL_OP_keymgmt_set_params_fn *set_params;
     OSSL_OP_keymgmt_settable_params_fn *settable_params;
 
+    /* Generation, a complex constructor */
+    OSSL_OP_keymgmt_gen_init_fn *gen_init;
+    OSSL_OP_keymgmt_gen_set_template_fn *gen_set_template;
+    OSSL_OP_keymgmt_gen_set_params_fn *gen_set_params;
+    OSSL_OP_keymgmt_gen_settable_params_fn *gen_settable_params;
+    OSSL_OP_keymgmt_gen_fn *gen;
+    OSSL_OP_keymgmt_gen_cleanup_fn *gen_cleanup;
+
     /* Key object checking */
     OSSL_OP_keymgmt_query_operation_name_fn *query_operation_name;
     OSSL_OP_keymgmt_has_fn *has;
     OSSL_OP_keymgmt_validate_fn *validate;
+    OSSL_OP_keymgmt_match_fn *match;
 
     /* Import and export routines */
     OSSL_OP_keymgmt_import_fn *import;
     OSSL_OP_keymgmt_import_types_fn *import_types;
     OSSL_OP_keymgmt_export_fn *export;
     OSSL_OP_keymgmt_export_types_fn *export_types;
+    OSSL_OP_keymgmt_copy_fn *copy;
 } /* EVP_KEYMGMT */ ;
 
 struct evp_keyexch_st {
@@ -127,9 +137,11 @@ struct evp_signature_st {
     OSSL_OP_signature_digest_sign_init_fn *digest_sign_init;
     OSSL_OP_signature_digest_sign_update_fn *digest_sign_update;
     OSSL_OP_signature_digest_sign_final_fn *digest_sign_final;
+    OSSL_OP_signature_digest_sign_fn *digest_sign;
     OSSL_OP_signature_digest_verify_init_fn *digest_verify_init;
     OSSL_OP_signature_digest_verify_update_fn *digest_verify_update;
     OSSL_OP_signature_digest_verify_final_fn *digest_verify_final;
+    OSSL_OP_signature_digest_verify_fn *digest_verify;
     OSSL_OP_signature_freectx_fn *freectx;
     OSSL_OP_signature_dupctx_fn *dupctx;
     OSSL_OP_signature_get_ctx_params_fn *get_ctx_params;

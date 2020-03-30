@@ -39,7 +39,7 @@ X509_get_ex_new_index, X509_set_ex_data, X509_get_ex_data
 
  int TYPE_set_ex_data(TYPE *d, int idx, void *arg);
 
- void *TYPE_get_ex_data(TYPE *d, int idx);
+ void *TYPE_get_ex_data(const TYPE *d, int idx);
 
  #define TYPE_set_app_data(TYPE *d, void *arg)
  #define TYPE_get_app_data(TYPE *d)
@@ -53,7 +53,7 @@ L<CRYPTO_get_ex_new_index(3)>.
 These functions handle application-specific data for OpenSSL data
 structures.
 
-TYPE_get_new_ex_index() is a macro that calls CRYPTO_get_ex_new_index()
+TYPE_get_ex_new_index() is a macro that calls CRYPTO_get_ex_new_index()
 with the correct B<index> value.
 
 TYPE_set_ex_data() is a function that calls CRYPTO_set_ex_data() with
@@ -74,7 +74,7 @@ there are no backward compatibility concerns.
 
 =head1 RETURN VALUES
 
-TYPE_get_new_ex_index() returns a new index on success or -1 on error.
+TYPE_get_ex_new_index() returns a new index on success or -1 on error.
 
 TYPE_set_ex_data() returns 1 on success or 0 on error.
 

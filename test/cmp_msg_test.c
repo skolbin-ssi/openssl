@@ -91,8 +91,7 @@ static int execute_errormsg_create_test(CMP_MSG_TEST_FIXTURE *fixture)
 {
     EXECUTE_MSG_CREATION_TEST(ossl_cmp_error_new(fixture->cmp_ctx, fixture->si,
                                                  fixture->err_code,
-                                                 NULL /* fixture->free_text */,
-                                                 0));
+                                                 "details", 0));
 }
 
 static int execute_rr_create_test(CMP_MSG_TEST_FIXTURE *fixture)
@@ -163,6 +162,7 @@ static int test_cmp_create_ir_protection_fails(void)
     fixture->expected = 0;
     if (!TEST_true(OSSL_CMP_CTX_set1_pkey(fixture->cmp_ctx, newkey))
             || !TEST_true(SET_OPT_UNPROTECTED_SEND(fixture->cmp_ctx, 0))
+            /* newkey used by default for signing does not match cert: */
             || !TEST_true(OSSL_CMP_CTX_set1_clCert(fixture->cmp_ctx, cert))) {
         tear_down(fixture);
         fixture = NULL;
@@ -317,7 +317,7 @@ static int test_cmp_create_certconf_fail_info_max(void)
 static int test_cmp_create_error_msg(void)
 {
     SETUP_TEST_FIXTURE(CMP_MSG_TEST_FIXTURE, set_up);
-    fixture->si = ossl_cmp_statusinfo_new(OSSL_CMP_PKISTATUS_rejection,
+    fixture->si = OSSL_CMP_STATUSINFO_new(OSSL_CMP_PKISTATUS_rejection,
                                           OSSL_CMP_PKIFAILUREINFO_systemFailure,
                                           NULL);
     fixture->err_code = -1;
@@ -358,8 +358,7 @@ static int test_cmp_create_genm(void)
     SETUP_TEST_FIXTURE(CMP_MSG_TEST_FIXTURE, set_up);
     fixture->expected = 1;
     iv = OSSL_CMP_ITAV_create(OBJ_nid2obj(NID_id_it_implicitConfirm), NULL);
-    if (!TEST_true(SET_OPT_UNPROTECTED_SEND(fixture->cmp_ctx, 1))
-            || !TEST_ptr(iv)
+    if (!TEST_ptr(iv)
             || !TEST_true(OSSL_CMP_CTX_push0_genm_ITAV(fixture->cmp_ctx, iv))) {
         OSSL_CMP_ITAV_free(iv);
         tear_down(fixture);
@@ -419,7 +418,7 @@ static int test_cmp_create_certrep(void)
 
 static int execute_rp_create(CMP_MSG_TEST_FIXTURE *fixture)
 {
-    OSSL_CMP_PKISI *si = ossl_cmp_statusinfo_new(33, 44, "a text");
+    OSSL_CMP_PKISI *si = OSSL_CMP_STATUSINFO_new(33, 44, "a text");
     X509_NAME *issuer = X509_NAME_new();
     ASN1_INTEGER *serial = ASN1_INTEGER_new();
     OSSL_CRMF_CERTID *cid = NULL;
@@ -439,8 +438,7 @@ static int execute_rp_create(CMP_MSG_TEST_FIXTURE *fixture)
     if (!TEST_ptr(ossl_cmp_revrepcontent_get_CertId(rpmsg->body->value.rp, 0)))
         goto err;
 
-    if (!TEST_ptr(ossl_cmp_revrepcontent_get_pkistatusinfo(rpmsg->body->
-                                                           value.rp, 0)))
+    if (!TEST_ptr(ossl_cmp_revrepcontent_get_pkisi(rpmsg->body->value.rp, 0)))
         goto err;
 
     res = 1;

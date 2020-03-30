@@ -19,11 +19,7 @@ $ENV{OPENSSL_MODULES} = $std_providers
 my $use_system = 0;
 my @cmd;
 
-if (($ENV{EXE_SHELL} // '') ne '') {
-    # We don't know what $ENV{EXE_SHELL} contains, so we must use the one
-    # string form to ensure that exec invokes a shell as needed.
-    @cmd = ( join(' ', $ENV{EXE_SHELL}, @ARGV) );
-} elsif (-x $unix_shlib_wrap) {
+if (-x $unix_shlib_wrap) {
     @cmd = ( $unix_shlib_wrap, @ARGV );
 } else {
     # Hope for the best
@@ -39,5 +35,12 @@ my $waitcode = system @cmd;
 # (exitcode << 8 | signalcode)
 die "wrap.pl: Failed to execute '", join(' ', @cmd), "': $!\n"
     if $waitcode == -1;
-exit($? & 255) if ($? & 255) != 0;
+
+# When the subprocess aborted on a signal, mimic what Unix shells do, by
+# converting the signal code to an exit code by setting the high bit.
+# This only happens on Unix flavored operating systems, the others don't
+# have this sort of signaling to date, and simply leave the low byte zero.
+exit(($? & 255) | 128) if ($? & 255) != 0;
+
+# When not a signal, just shift down the subprocess exit code and use that.
 exit($? >> 8);

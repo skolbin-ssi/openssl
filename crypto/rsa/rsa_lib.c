@@ -20,9 +20,11 @@
 #include <openssl/evp.h>
 #include "internal/cryptlib.h"
 #include "internal/refcount.h"
+#include "openssl/param_build.h"
 #include "crypto/bn.h"
 #include "crypto/evp.h"
 #include "crypto/rsa.h"
+#include "crypto/security_bits.h"
 #include "rsa_local.h"
 
 static RSA *rsa_new_intern(ENGINE *engine, OPENSSL_CTX *libctx);
@@ -281,11 +283,20 @@ static uint32_t ilog_e(uint64_t v)
  * NIST SP 800-56B rev 2 Appendix D: Maximum Security Strength Estimates for IFC
  * Modulus Lengths.
  *
+ * Note that this formula is also referred to in SP800-56A rev3 Appendix D:
+ * for FFC safe prime groups for modp and ffdhe.
+ * After Table 25 and Table 26 it refers to
+ * "The maximum security strength estimates were calculated using the formula in
+ * Section 7.5 of the FIPS 140 IG and rounded to the nearest multiple of eight
+ * bits".
+ *
+ * The formula is:
+ *
  * E = \frac{1.923 \sqrt[3]{nBits \cdot log_e(2)}
  *           \cdot(log_e(nBits \cdot log_e(2))^{2/3} - 4.69}{log_e(2)}
  * The two cube roots are merged together here.
  */
-uint16_t rsa_compute_security_bits(int n)
+uint16_t ifc_ffc_compute_security_bits(int n)
 {
     uint64_t x;
     uint32_t lx;
@@ -322,6 +333,8 @@ uint16_t rsa_compute_security_bits(int n)
     return (y + 4) & ~7;
 }
 
+
+
 int RSA_security_bits(const RSA *rsa)
 {
     int bits = BN_num_bits(rsa->n);
@@ -335,7 +348,7 @@ int RSA_security_bits(const RSA *rsa)
             return 0;
     }
 #endif
-    return rsa_compute_security_bits(bits);
+    return ifc_ffc_compute_security_bits(bits);
 }
 
 int RSA_set0_key(RSA *r, BIGNUM *n, BIGNUM *e, BIGNUM *d)
@@ -622,13 +635,10 @@ const BIGNUM *RSA_get0_iqmp(const RSA *r)
     return r->iqmp;
 }
 
-/* TODO(3.0): Temporary until we move PSS support into the FIPS module */
-#ifndef FIPS_MODE
 const RSA_PSS_PARAMS *RSA_get0_pss_params(const RSA *r)
 {
     return r->pss;
 }
-#endif
 
 void RSA_clear_flags(RSA *r, int flags)
 {
@@ -1253,5 +1263,99 @@ int EVP_PKEY_CTX_get_rsa_pss_saltlen(EVP_PKEY_CTX *ctx, int *saltlen)
 
     return 1;
 
+}
+
+int EVP_PKEY_CTX_set_rsa_keygen_bits(EVP_PKEY_CTX *ctx, int bits)
+{
+    OSSL_PARAM params[2], *p = params;
+    size_t bits2 = bits;
+
+    if (ctx == NULL || !EVP_PKEY_CTX_IS_GEN_OP(ctx)) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED);
+        /* Uses the same return values as EVP_PKEY_CTX_ctrl */
+        return -2;
+    }
+
+    /* If key type not RSA return error */
+    if (ctx->pmeth != NULL && ctx->pmeth->pkey_id != EVP_PKEY_RSA)
+        return -1;
+
+    /* TODO(3.0): Remove this eventually when no more legacy */
+    if (ctx->op.keymgmt.genctx == NULL)
+        return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_RSA, EVP_PKEY_OP_KEYGEN,
+                                 EVP_PKEY_CTRL_RSA_KEYGEN_BITS, bits, NULL);
+
+    *p++ = OSSL_PARAM_construct_size_t(OSSL_PKEY_PARAM_RSA_BITS, &bits2);
+    *p++ = OSSL_PARAM_construct_end();
+
+    if (!EVP_PKEY_CTX_set_params(ctx, params))
+        return 0;
+
+    return 1;
+}
+
+int EVP_PKEY_CTX_set_rsa_keygen_pubexp(EVP_PKEY_CTX *ctx, BIGNUM *pubexp)
+{
+    OSSL_PARAM_BLD *tmpl;
+    OSSL_PARAM *params;
+    int ret;
+
+    if (ctx == NULL || !EVP_PKEY_CTX_IS_GEN_OP(ctx)) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED);
+        /* Uses the same return values as EVP_PKEY_CTX_ctrl */
+        return -2;
+    }
+
+    /* If key type not RSA return error */
+    if (ctx->pmeth != NULL && ctx->pmeth->pkey_id != EVP_PKEY_RSA)
+        return -1;
+
+    /* TODO(3.0): Remove this eventually when no more legacy */
+    if (ctx->op.keymgmt.genctx == NULL)
+        return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_RSA, EVP_PKEY_OP_KEYGEN,
+                                 EVP_PKEY_CTRL_RSA_KEYGEN_PUBEXP, 0, pubexp);
+
+    if ((tmpl = OSSL_PARAM_BLD_new()) == NULL)
+        return 0;
+    if (!OSSL_PARAM_BLD_push_BN(tmpl, OSSL_PKEY_PARAM_RSA_E, pubexp)
+        || (params = OSSL_PARAM_BLD_to_param(tmpl)) == NULL) {
+        OSSL_PARAM_BLD_free(tmpl);
+        return 0;
+    }
+    OSSL_PARAM_BLD_free(tmpl);
+
+    ret = EVP_PKEY_CTX_set_params(ctx, params);
+    OSSL_PARAM_BLD_free_params(params);
+    return ret;
+}
+
+int EVP_PKEY_CTX_set_rsa_keygen_primes(EVP_PKEY_CTX *ctx, int primes)
+{
+    OSSL_PARAM params[2], *p = params;
+    size_t primes2 = primes;
+
+    if (ctx == NULL || !EVP_PKEY_CTX_IS_GEN_OP(ctx)) {
+        ERR_raise(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED);
+        /* Uses the same return values as EVP_PKEY_CTX_ctrl */
+        return -2;
+    }
+
+    /* If key type not RSA return error */
+    if (ctx->pmeth != NULL && ctx->pmeth->pkey_id != EVP_PKEY_RSA)
+        return -1;
+
+    /* TODO(3.0): Remove this eventually when no more legacy */
+    if (ctx->op.keymgmt.genctx == NULL)
+        return EVP_PKEY_CTX_ctrl(ctx, EVP_PKEY_RSA, EVP_PKEY_OP_KEYGEN,
+                                 EVP_PKEY_CTRL_RSA_KEYGEN_PRIMES, primes,
+                                 NULL);
+
+    *p++ = OSSL_PARAM_construct_size_t(OSSL_PKEY_PARAM_RSA_PRIMES, &primes2);
+    *p++ = OSSL_PARAM_construct_end();
+
+    if (!EVP_PKEY_CTX_set_params(ctx, params))
+        return 0;
+
+    return 1;
 }
 #endif

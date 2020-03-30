@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -20,7 +20,11 @@
 #include "internal/refcount.h"
 #include <openssl/err.h>
 #include <openssl/engine.h>
+#include <openssl/self_test.h>
 #include "crypto/bn.h"
+
+static int ecdsa_keygen_pairwise_test(EC_KEY *eckey, OSSL_CALLBACK *cb,
+                                      void *cbarg);
 
 #ifndef FIPS_MODE
 EC_KEY *EC_KEY_new(void)
@@ -241,11 +245,14 @@ int ossl_ec_key_gen(EC_KEY *eckey)
  * See SP800-56AR3 5.6.1.2.2 "Key Pair Generation by Testing Candidates"
  *
  * Params:
+ *     libctx A context containing an optional self test callback.
  *     eckey An EC key object that contains domain params. The generated keypair
  *           is stored in this object.
+ *     pairwise_test Set to non zero to perform a pairwise test. If the test
+ *                   fails then the keypair is not generated,
  * Returns 1 if the keypair was generated or 0 otherwise.
  */
-int ec_key_simple_generate_key(EC_KEY *eckey)
+int ec_generate_key(OPENSSL_CTX *libctx, EC_KEY *eckey, int pairwise_test)
 {
     int ok = 0;
     BIGNUM *priv_key = NULL;
@@ -305,8 +312,18 @@ int ec_key_simple_generate_key(EC_KEY *eckey)
 
     eckey->dirty_cnt++;
 
-    ok = 1;
+#ifdef FIPS_MODE
+    pairwise_test = 1;
+#endif /* FIPS_MODE */
 
+    ok = 1;
+    if (pairwise_test) {
+        OSSL_CALLBACK *cb = NULL;
+        void *cbarg = NULL;
+
+        OSSL_SELF_TEST_get_callback(libctx, &cb, &cbarg);
+        ok = ecdsa_keygen_pairwise_test(eckey, cb, cbarg);
+    }
 err:
     /* Step (9): If there is an error return an invalid keypair. */
     if (!ok) {
@@ -319,6 +336,11 @@ err:
     BN_clear_free(priv_key);
     BN_CTX_free(ctx);
     return ok;
+}
+
+int ec_key_simple_generate_key(EC_KEY *eckey)
+{
+    return ec_generate_key(NULL, eckey, 0);
 }
 
 int ec_key_simple_generate_public_key(EC_KEY *eckey)
@@ -397,6 +419,120 @@ err:
 
 /*
  * ECC Key validation as specified in SP800-56A R3.
+ * Section 5.6.2.3.3 ECC Full Public-Key Validation.
+ */
+int ec_key_public_check(const EC_KEY *eckey, BN_CTX *ctx)
+{
+    int ret = 0;
+    EC_POINT *point = NULL;
+    const BIGNUM *order = NULL;
+
+    if (eckey == NULL || eckey->group == NULL || eckey->pub_key == NULL) {
+        ECerr(0, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+
+    /* 5.6.2.3.3 (Step 1): Q != infinity */
+    if (EC_POINT_is_at_infinity(eckey->group, eckey->pub_key)) {
+        ECerr(0, EC_R_POINT_AT_INFINITY);
+        return 0;
+    }
+
+    point = EC_POINT_new(eckey->group);
+    if (point == NULL)
+        return 0;
+
+    /* 5.6.2.3.3 (Step 2) Test if the public key is in range */
+    if (!ec_key_public_range_check(ctx, eckey)) {
+        ECerr(0, EC_R_COORDINATES_OUT_OF_RANGE);
+        goto err;
+    }
+
+    /* 5.6.2.3.3 (Step 3) is the pub_key on the elliptic curve */
+    if (EC_POINT_is_on_curve(eckey->group, eckey->pub_key, ctx) <= 0) {
+        ECerr(0, EC_R_POINT_IS_NOT_ON_CURVE);
+        goto err;
+    }
+
+    order = eckey->group->order;
+    if (BN_is_zero(order)) {
+        ECerr(0, EC_R_INVALID_GROUP_ORDER);
+        goto err;
+    }
+    /* 5.6.2.3.3 (Step 4) : pub_key * order is the point at infinity. */
+    if (!EC_POINT_mul(eckey->group, point, NULL, eckey->pub_key, order, ctx)) {
+        ECerr(0, ERR_R_EC_LIB);
+        goto err;
+    }
+    if (!EC_POINT_is_at_infinity(eckey->group, point)) {
+        ECerr(0, EC_R_WRONG_ORDER);
+        goto err;
+    }
+    ret = 1;
+err:
+    EC_POINT_free(point);
+    return ret;
+}
+
+/*
+ * ECC Key validation as specified in SP800-56A R3.
+ * Section 5.6.2.1.2 Owner Assurance of Private-Key Validity
+ * The private key is in the range [1, order-1]
+ */
+int ec_key_private_check(const EC_KEY *eckey)
+{
+    if (eckey == NULL || eckey->group == NULL || eckey->priv_key == NULL) {
+        ECerr(0, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+    if (BN_cmp(eckey->priv_key, BN_value_one()) < 0
+        || BN_cmp(eckey->priv_key, eckey->group->order) >= 0) {
+        ECerr(0, EC_R_INVALID_PRIVATE_KEY);
+        return 0;
+    }
+    return 1;
+}
+
+/*
+ * ECC Key validation as specified in SP800-56A R3.
+ * Section 5.6.2.1.4 Owner Assurance of Pair-wise Consistency (b)
+ * Check if generator * priv_key = pub_key
+ */
+int ec_key_pairwise_check(const EC_KEY *eckey, BN_CTX *ctx)
+{
+    int ret = 0;
+    EC_POINT *point = NULL;
+
+    if (eckey == NULL
+       || eckey->group == NULL
+       || eckey->pub_key == NULL
+       || eckey->priv_key == NULL) {
+        ECerr(0, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+
+    point = EC_POINT_new(eckey->group);
+    if (point == NULL)
+        goto err;
+
+
+    if (!EC_POINT_mul(eckey->group, point, eckey->priv_key, NULL, NULL, ctx)) {
+        ECerr(0, ERR_R_EC_LIB);
+        goto err;
+    }
+    if (EC_POINT_cmp(eckey->group, point, eckey->pub_key, ctx) != 0) {
+        ECerr(0, EC_R_INVALID_PRIVATE_KEY);
+        goto err;
+    }
+    ret = 1;
+err:
+    EC_POINT_free(point);
+    return ret;
+}
+
+
+/*
+ * ECC Key validation as specified in SP800-56A R3.
  *    Section 5.6.2.3.3 ECC Full Public-Key Validation
  *    Section 5.6.2.1.2 Owner Assurance of Private-Key Validity
  *    Section 5.6.2.1.4 Owner Assurance of Pair-wise Consistency
@@ -409,81 +545,25 @@ int ec_key_simple_check_key(const EC_KEY *eckey)
 {
     int ok = 0;
     BN_CTX *ctx = NULL;
-    const BIGNUM *order = NULL;
-    EC_POINT *point = NULL;
 
-    if (eckey == NULL || eckey->group == NULL || eckey->pub_key == NULL) {
-        ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, ERR_R_PASSED_NULL_PARAMETER);
+    if (eckey == NULL) {
+        ECerr(0, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
     }
-
-    /* 5.6.2.3.3 (Step 1): Q != infinity */
-    if (EC_POINT_is_at_infinity(eckey->group, eckey->pub_key)) {
-        ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, EC_R_POINT_AT_INFINITY);
-        goto err;
-    }
-
     if ((ctx = BN_CTX_new_ex(eckey->libctx)) == NULL)
-        goto err;
+        return 0;
 
-    if ((point = EC_POINT_new(eckey->group)) == NULL)
+    if (!ec_key_public_check(eckey, ctx))
         goto err;
-
-    /* 5.6.2.3.3 (Step 2) Test if the public key is in range */
-    if (!ec_key_public_range_check(ctx, eckey)) {
-        ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, EC_R_COORDINATES_OUT_OF_RANGE);
-        goto err;
-    }
-
-    /* 5.6.2.3.3 (Step 3) is the pub_key on the elliptic curve */
-    if (EC_POINT_is_on_curve(eckey->group, eckey->pub_key, ctx) <= 0) {
-        ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, EC_R_POINT_IS_NOT_ON_CURVE);
-        goto err;
-    }
-
-    order = eckey->group->order;
-    if (BN_is_zero(order)) {
-        ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, EC_R_INVALID_GROUP_ORDER);
-        goto err;
-    }
-    /* 5.6.2.3.3 (Step 4) : pub_key * order is the point at infinity. */
-    if (!EC_POINT_mul(eckey->group, point, NULL, eckey->pub_key, order, ctx)) {
-        ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, ERR_R_EC_LIB);
-        goto err;
-    }
-    if (!EC_POINT_is_at_infinity(eckey->group, point)) {
-        ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, EC_R_WRONG_ORDER);
-        goto err;
-    }
 
     if (eckey->priv_key != NULL) {
-        /*
-         * 5.6.2.1.2 Owner Assurance of Private-Key Validity
-         * The private key is in the range [1, order-1]
-         */
-        if (BN_cmp(eckey->priv_key, BN_value_one()) < 0
-                || BN_cmp(eckey->priv_key, order) >= 0) {
-            ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, EC_R_WRONG_ORDER);
+        if (!ec_key_private_check(eckey)
+            || !ec_key_pairwise_check(eckey, ctx))
             goto err;
-        }
-        /*
-         * Section 5.6.2.1.4 Owner Assurance of Pair-wise Consistency (b)
-         * Check if generator * priv_key = pub_key
-         */
-        if (!EC_POINT_mul(eckey->group, point, eckey->priv_key,
-                          NULL, NULL, ctx)) {
-            ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, ERR_R_EC_LIB);
-            goto err;
-        }
-        if (EC_POINT_cmp(eckey->group, point, eckey->pub_key, ctx) != 0) {
-            ECerr(EC_F_EC_KEY_SIMPLE_CHECK_KEY, EC_R_INVALID_PRIVATE_KEY);
-            goto err;
-        }
     }
     ok = 1;
- err:
+err:
     BN_CTX_free(ctx);
-    EC_POINT_free(point);
     return ok;
 }
 
@@ -545,6 +625,11 @@ int EC_KEY_set_public_key_affine_coordinates(EC_KEY *key, BIGNUM *x,
     EC_POINT_free(point);
     return ok;
 
+}
+
+OPENSSL_CTX *ec_key_get_libctx(const EC_KEY *key)
+{
+    return key->libctx;
 }
 
 const EC_GROUP *EC_KEY_get0_group(const EC_KEY *key)
@@ -848,4 +933,46 @@ int EC_KEY_can_sign(const EC_KEY *eckey)
         || (eckey->group->meth->flags & EC_FLAGS_NO_SIGN))
         return 0;
     return 1;
+}
+
+/*
+ * FIPS 140-2 IG 9.9 AS09.33
+ * Perform a sign/verify operation.
+ *
+ * NOTE: When generating keys for key-agreement schemes - FIPS 140-2 IG 9.9
+ * states that no additional pairwise tests are required (apart from the tests
+ * specified in SP800-56A) when generating keys. Hence pairwise ECDH tests are
+ * omitted here.
+ */
+static int ecdsa_keygen_pairwise_test(EC_KEY *eckey, OSSL_CALLBACK *cb,
+                                      void *cbarg)
+{
+    int ret = 0;
+    unsigned char dgst[16] = {0};
+    int dgst_len = (int)sizeof(dgst);
+    ECDSA_SIG *sig = NULL;
+    OSSL_SELF_TEST *st = NULL;
+
+    st = OSSL_SELF_TEST_new(cb, cbarg);
+    if (st == NULL)
+        return 0;
+
+    OSSL_SELF_TEST_onbegin(st, OSSL_SELF_TEST_TYPE_PCT,
+                           OSSL_SELF_TEST_DESC_PCT_ECDSA);
+
+    sig = ECDSA_do_sign(dgst, dgst_len, eckey);
+    if (sig == NULL)
+        goto err;
+
+    OSSL_SELF_TEST_oncorrupt_byte(st, dgst);
+
+    if (ECDSA_do_verify(dgst, dgst_len, sig, eckey) != 1)
+        goto err;
+
+    ret = 1;
+err:
+    OSSL_SELF_TEST_onend(st, ret);
+    OSSL_SELF_TEST_free(st);
+    ECDSA_SIG_free(sig);
+    return ret;
 }

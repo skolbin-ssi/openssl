@@ -94,6 +94,7 @@ int ERR_load_SSL_strings(void);
 #  define SSL_F_OSSL_STATEM_SERVER_CONSTRUCT_MESSAGE       0
 #  define SSL_F_OSSL_STATEM_SERVER_POST_PROCESS_MESSAGE    0
 #  define SSL_F_OSSL_STATEM_SERVER_POST_WORK               0
+#  define SSL_F_OSSL_STATEM_SERVER_PRE_WORK                0
 #  define SSL_F_OSSL_STATEM_SERVER_PROCESS_MESSAGE         0
 #  define SSL_F_OSSL_STATEM_SERVER_READ_TRANSITION         0
 #  define SSL_F_OSSL_STATEM_SERVER_WRITE_TRANSITION        0
@@ -560,6 +561,7 @@ int ERR_load_SSL_strings(void);
 # define SSL_R_EXTRA_DATA_IN_MESSAGE                      153
 # define SSL_R_EXT_LENGTH_MISMATCH                        163
 # define SSL_R_FAILED_TO_INIT_ASYNC                       405
+# define SSL_R_ALGORITHM_FETCH_FAILED                     295
 # define SSL_R_FRAGMENTED_CLIENT_HELLO                    401
 # define SSL_R_GOT_A_FIN_BEFORE_A_CCS                     154
 # define SSL_R_HTTPS_PROXY_REQUEST                        155

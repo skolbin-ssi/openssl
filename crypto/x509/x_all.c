@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2017 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -71,10 +71,7 @@ int X509_verify(X509 *a, EVP_PKEY *r)
     if (X509_ALGOR_cmp(&a->sig_alg, &a->cert_info.signature))
         return 0;
 
-#ifndef OPENSSL_NO_SM2
-    id = a->sm2_id;
-#endif
-
+    id = a->distinguishing_id;
     if ((ctx = make_id_ctx(r, id)) != NULL) {
         rv = ASN1_item_verify_ctx(ASN1_ITEM_rptr(X509_CINF), &a->sig_alg,
                                   &a->signature, &a->cert_info, ctx);
@@ -89,10 +86,7 @@ int X509_REQ_verify(X509_REQ *a, EVP_PKEY *r)
     EVP_MD_CTX *ctx = NULL;
     ASN1_OCTET_STRING *id = NULL;
 
-#ifndef OPENSSL_NO_SM2
-    id = a->sm2_id;
-#endif
-
+    id = a->distinguishing_id;
     if ((ctx = make_id_ctx(r, id)) != NULL) {
         rv = ASN1_item_verify_ctx(ASN1_ITEM_rptr(X509_REQ_INFO), &a->sig_alg,
                                   a->signature, &a->req_info, ctx);
@@ -439,7 +433,8 @@ int X509_pubkey_digest(const X509 *data, const EVP_MD *type,
 int X509_digest(const X509 *data, const EVP_MD *type, unsigned char *md,
                 unsigned int *len)
 {
-    if (type == EVP_sha1() && (data->ex_flags & EXFLAG_SET) != 0) {
+    if (type == EVP_sha1() && (data->ex_flags & EXFLAG_SET) != 0
+            && (data->ex_flags & EXFLAG_INVALID) == 0) {
         /* Asking for SHA1 and we already computed it. */
         if (len != NULL)
             *len = sizeof(data->sha1_hash);
@@ -450,10 +445,40 @@ int X509_digest(const X509 *data, const EVP_MD *type, unsigned char *md,
             (ASN1_ITEM_rptr(X509), type, (char *)data, md, len));
 }
 
+/* calculate cert digest using the same hash algorithm as in its signature */
+ASN1_OCTET_STRING *X509_digest_sig(const X509 *cert)
+{
+    unsigned int len;
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    int md_NID;
+    const EVP_MD *md = NULL;
+    ASN1_OCTET_STRING *new = NULL;
+
+    if (cert == NULL) {
+        X509err(0, ERR_R_PASSED_NULL_PARAMETER);
+        return NULL;
+    }
+
+    if (!OBJ_find_sigid_algs(X509_get_signature_nid(cert), &md_NID, NULL)
+            || (md = EVP_get_digestbynid(md_NID)) == NULL) {
+        CMPerr(0, X509_R_UNSUPPORTED_ALGORITHM);
+        return NULL;
+    }
+    if (!X509_digest(cert, md, hash, &len)
+            || (new = ASN1_OCTET_STRING_new()) == NULL)
+        return NULL;
+    if (!(ASN1_OCTET_STRING_set(new, hash, len))) {
+        ASN1_OCTET_STRING_free(new);
+        return NULL;
+    }
+    return new;
+}
+
 int X509_CRL_digest(const X509_CRL *data, const EVP_MD *type,
                     unsigned char *md, unsigned int *len)
 {
-    if (type == EVP_sha1() && (data->flags & EXFLAG_SET) != 0) {
+    if (type == EVP_sha1() && (data->flags & EXFLAG_SET) != 0
+            && (data->flags & EXFLAG_INVALID) == 0) {
         /* Asking for SHA1; always computed in CRL d2i. */
         if (len != NULL)
             *len = sizeof(data->sha1_hash);

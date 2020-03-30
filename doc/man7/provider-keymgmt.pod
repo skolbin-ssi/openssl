@@ -18,6 +18,13 @@ provider-keymgmt - The KEYMGMT library E<lt>-E<gt> provider functions
  void *OP_keymgmt_new(void *provctx);
  void OP_keymgmt_free(void *keydata);
 
+ void *OP_keymgmt_gen_init(void *provctx, int selection);
+ int OP_keymgmt_gen_set_template(void *genctx, void *template);
+ int OP_keymgmt_gen_set_params(void *genctx, const OSSL_PARAM params[]);
+ const OSSL_PARAM *OP_keymgmt_gen_settable_params(void *provctx);
+ void *OP_keymgmt_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg);
+ void OP_keymgmt_gen_cleanup(void *genctx);
+
  /* Key object information */
  int OP_keymgmt_get_params(void *keydata, OSSL_PARAM params[]);
  const OSSL_PARAM *OP_keymgmt_gettable_params(void);
@@ -26,6 +33,8 @@ provider-keymgmt - The KEYMGMT library E<lt>-E<gt> provider functions
 
  /* Key object content checks */
  int OP_keymgmt_has(void *keydata, int selection);
+ int OP_keymgmt_match(const void *keydata1, const void *keydata2,
+                      int selection);
 
  /* Discovery of supported operations */
  const char *OP_keymgmt_query_operation_name(int operation_id);
@@ -36,6 +45,9 @@ provider-keymgmt - The KEYMGMT library E<lt>-E<gt> provider functions
  int OP_keymgmt_export(int selection, void *keydata,
                        OSSL_CALLBACK *param_cb, void *cbarg);
  const OSSL_PARAM *OP_keymgmt_export_types(int selection);
+
+ /* Key object copy */
+ int OP_keymgmt_copy(void *keydata_to, const void *keydata_from, int selection);
 
  /* Key object validation */
  int OP_keymgmt_validate(void *keydata, int selection);
@@ -75,6 +87,13 @@ macros in L<openssl-core_numbers.h(7)>, as follows:
  OP_keymgmt_new                  OSSL_FUNC_KEYMGMT_NEW
  OP_keymgmt_free                 OSSL_FUNC_KEYMGMT_FREE
 
+ OP_keymgmt_gen_init             OSSL_FUNC_KEYMGMT_GEN_INIT
+ OP_keymgmt_gen_set_template     OSSL_FUNC_KEYMGMT_GEN_SET_TEMPLATE
+ OP_keymgmt_gen_set_params       OSSL_FUNC_KEYMGMT_GEN_SET_PARAMS
+ OP_keymgmt_gen_settable_params  OSSL_FUNC_KEYMGMT_GEN_SETTABLE_PARAMS
+ OP_keymgmt_gen                  OSSL_FUNC_KEYMGMT_GEN
+ OP_keymgmt_gen_cleanup          OSSL_FUNC_KEYMGMT_GEN_CLEANUP
+
  OP_keymgmt_get_params           OSSL_FUNC_KEYMGMT_GET_PARAMS
  OP_keymgmt_gettable_params      OSSL_FUNC_KEYMGMT_GETTABLE_PARAMS
  OP_keymgmt_set_params           OSSL_FUNC_KEYMGMT_SET_PARAMS
@@ -84,12 +103,14 @@ macros in L<openssl-core_numbers.h(7)>, as follows:
 
  OP_keymgmt_has                  OSSL_FUNC_KEYMGMT_HAS
  OP_keymgmt_validate             OSSL_FUNC_KEYMGMT_VALIDATE
+ OP_keymgmt_match                OSSL_FUNC_KEYMGMT_MATCH
 
  OP_keymgmt_import               OSSL_FUNC_KEYMGMT_IMPORT
  OP_keymgmt_import_types         OSSL_FUNC_KEYMGMT_IMPORT_TYPES
  OP_keymgmt_export               OSSL_FUNC_KEYMGMT_EXPORT
  OP_keymgmt_export_types         OSSL_FUNC_KEYMGMT_EXPORT_TYPES
 
+ OP_keymgmt_copy                 OSSL_FUNC_KEYMGMT_COPY
 
 =head2 Key Objects
 
@@ -186,12 +207,41 @@ key object, but that is not mandatory.
 
 OP_keymgmt_free() should free the passed I<keydata>.
 
-The constructor and destructor are mandatory, a KEYMGMT implementation
-without them will not be accepted.
+OP_keymgmt_gen_init(), OP_keymgmt_gen_set_template(),
+OP_keymgmt_gen_set_params(), OP_keymgmt_gen_settable_params(),
+OP_keymgmt_gen() and OP_keymgmt_gen_cleanup() work together as a more
+elaborate context based key object constructor.
 
-=for comment when new constructors appear, it's sufficient if only one
-of them is present.  The remark above will have to change to reflect
-that.
+OP_keymgmt_gen_init() should create the key object generation context
+and initialize it with I<selections>, which will determine what kind
+of contents the key object to be generated should get.
+
+OP_keymgmt_gen_set_template() should add I<template> to the context
+I<genctx>.  The I<template> is assumed to be a key object constructed
+with the same KEYMGMT, and from which content that the implementation
+chooses can be used as a template for the key object to be generated.
+Typically, the generation of a DSA or DH key would get the domain
+parameters from this I<template>.
+
+OP_keymgmt_gen_set_params() should set additional parameters from
+I<params> in the key object generation context I<genctx>.
+
+OP_keymgmt_gen_settable_params() should return a constant array of
+descriptor B<OSSL_PARAM>, for parameters that OP_keymgmt_gen_set_params() 
+can handle.
+
+OP_keymgmt_gen() should perform the key object generation itself, and
+return the result.  The callback I<cb> should be called at regular
+intervals with indications on how the key object generation
+progresses.
+
+OP_keymgmt_gen_cleanup() should clean up and free the key object
+generation context I<genctx>
+
+At least one of OP_keymgmt_new() and OP_keymgmt_gen() are mandatory,
+as well as OP_keymgmt_free().  Additionally, if OP_keymgmt_gen() is
+present, OP_keymgmt_gen_init() and OP_keymgmt_gen_cleanup() must be
+present as well.
 
 =head2 Key Object Information Functions
 
@@ -239,7 +289,12 @@ B<OSSL_KEYMGMT_SELECT_PUBLIC_KEY> (or B<OSSL_KEYMGMT_SELECT_KEYPAIR>
 for short) is expected to check that the pairwise consistency of
 I<keydata> is valid.
 
-=head2 Key Object Import and Export Functions
+OP_keymgmt_match() should check if the data subset indicated by
+I<selection> in I<keydata1> and I<keydata2> match.  It is assumed that
+the caller has ensured that I<keydata1> and I<keydata2> are both owned
+by the implementation of this function.
+
+=head2 Key Object Import, Export and Copy Functions
 
 OP_keymgmt_import() should import data indicated by I<selection> into
 I<keydata> with values taken from the B<OSSL_PARAM> array I<params>.
@@ -256,35 +311,40 @@ OP_keymgmt_export_types() should return a constant array of descriptor
 B<OSSL_PARAM> for data indicated by I<selection>, that the
 OP_keymgmt_export() callback can expect to receive.
 
+OP_keymgmt_copy() should copy data subsets indicated by I<selection>
+from I<keydata_from> to I<keydata_to>.  It is assumed that the caller
+has ensured that I<keydata_to> and I<keydata_from> are both owned by
+the implementation of this function.
+
 =head2 Built-in RSA Import/Export Types
 
 The following Import/Export types are available for the built-in RSA algorithm:
 
 =over 4
 
-=item "n" (B<OSSL_PKEY_PARAM_RSA_N>) <integer>
+=item "n" (B<OSSL_PKEY_PARAM_RSA_N>) <unsigned integer>
 
 The RSA "n" value.
 
-=item "e" (B<OSSL_PKEY_PARAM_RSA_E>) <integer>
+=item "e" (B<OSSL_PKEY_PARAM_RSA_E>) <unsigned integer>
 
 The RSA "e" value.
 
-=item "d" (B<OSSL_PKEY_PARAM_RSA_D>) <integer>
+=item "d" (B<OSSL_PKEY_PARAM_RSA_D>) <unsigned integer>
 
 The RSA "d" value.
 
-=item "rsa-factor" (B<OSSL_PKEY_PARAM_RSA_FACTOR>) <integer>
+=item "rsa-factor" (B<OSSL_PKEY_PARAM_RSA_FACTOR>) <unsigned integer>
 
 An RSA factor. In 2 prime RSA these are often known as "p" or "q". This value
 may be repeated up to 10 times in a single key.
 
-=item "rsa-exponent" (B<OSSL_PKEY_PARAM_RSA_EXPONENT>) <integer>
+=item "rsa-exponent" (B<OSSL_PKEY_PARAM_RSA_EXPONENT>) <unsigned integer>
 
 An RSA CRT (Chinese Remainder Theorem) exponent. This value may be repeated up
 to 10 times in a single key.
 
-=item "rsa-coefficient" (B<OSSL_PKEY_PARAM_RSA_COEFFICIENT>) <integer>
+=item "rsa-coefficient" (B<OSSL_PKEY_PARAM_RSA_COEFFICIENT>) <unsigned integer>
 
 An RSA CRT (Chinese Remainder Theorem) coefficient. This value may be repeated
 up to 9 times in a single key.
@@ -298,23 +358,23 @@ Diffie-Hellman algorithms:
 
 =over 4
 
-=item "pub" (B<OSSL_PKEY_PARAM_PUB_KEY>) <integer> or <octet string>
+=item "pub" (B<OSSL_PKEY_PARAM_PUB_KEY>) <unsigned integer>
 
 The public key value.
 
-=item "priv" (B<OSSL_PKEY_PARAM_PRIV_KEY>) <integer> or <octet string>
+=item "priv" (B<OSSL_PKEY_PARAM_PRIV_KEY>) <unsigned integer>
 
 The private key value.
 
-=item "p" (B<OSSL_PKEY_PARAM_FFC_P>) <integer>
+=item "p" (B<OSSL_PKEY_PARAM_FFC_P>) <unsigned integer>
 
 A DSA or Diffie-Hellman "p" value.
 
-=item "q" (B<OSSL_PKEY_PARAM_FFC_Q>) <integer>
+=item "q" (B<OSSL_PKEY_PARAM_FFC_Q>) <unsigned integer>
 
 A DSA or Diffie-Hellman "q" value.
 
-=item "g" (B<OSSL_PKEY_PARAM_FFC_G>) <integer>
+=item "g" (B<OSSL_PKEY_PARAM_FFC_G>) <unsigned integer>
 
 A DSA or Diffie-Hellman "g" value.
 
@@ -332,6 +392,32 @@ ED25519 and X448 algorithms:
 The public key value.
 
 =item "priv" (B<OSSL_PKEY_PARAM_PRIV_KEY>) <octet string>
+
+The private key value.
+
+=back
+
+=head2 Built-in EC Import/Export Types
+
+The following Import/Export types are available for the built-in EC algorithm:
+
+=over 4
+
+=item "curve-name" (B<OSSL_PKEY_PARAM_EC_NAME>) <utf8 string>
+
+The EC curve name.
+
+=item "use-cofactor-flag" (B<OSSL_PKEY_PARAM_USE_COFACTOR_ECDH>) <integer>
+
+Enable Cofactor DH (ECC CDH) if this value is 1, otherwise it uses normal EC DH
+if the value is zero. The cofactor variant multiplies the shared secret by the
+EC curve's cofactor (note for some curves the cofactor is 1).
+
+=item "pub" (B<OSSL_PKEY_PARAM_PUB_KEY>) <octet string>
+
+The public key value in EC point format.
+
+=item "priv" (B<OSSL_PKEY_PARAM_PRIV_KEY>) <unsigned integer>
 
 The private key value.
 

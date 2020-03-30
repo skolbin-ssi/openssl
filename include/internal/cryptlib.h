@@ -23,6 +23,7 @@
 # include <openssl/crypto.h>
 # include <openssl/buffer.h>
 # include <openssl/bio.h>
+# include <openssl/asn1.h>
 # include <openssl/err.h>
 # include "internal/nelem.h"
 
@@ -164,6 +165,7 @@ typedef struct openssl_ctx_method {
 } OPENSSL_CTX_METHOD;
 
 OPENSSL_CTX *openssl_ctx_get_concrete(OPENSSL_CTX *ctx);
+int openssl_ctx_is_default(OPENSSL_CTX *ctx);
 
 /* Functions to retrieve pointers to data by index */
 void *openssl_ctx_get_data(OPENSSL_CTX *, int /* index */,
@@ -234,5 +236,7 @@ static ossl_inline void ossl_sleep(unsigned long millis)
 }
 #endif /* defined OPENSSL_SYS_UNIX */
 
+char *sk_ASN1_UTF8STRING2text(STACK_OF(ASN1_UTF8STRING) *text, const char *sep,
+                              size_t max_len);
 
 #endif

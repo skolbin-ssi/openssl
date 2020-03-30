@@ -71,9 +71,9 @@ struct X509_req_st {
     ASN1_BIT_STRING *signature; /* signature */
     CRYPTO_REF_COUNT references;
     CRYPTO_RWLOCK *lock;
-# ifndef OPENSSL_NO_SM2
-    ASN1_OCTET_STRING *sm2_id;
-# endif
+
+    /* Set on live certificates for authentication purposes */
+    ASN1_OCTET_STRING *distinguishing_id;
 };
 
 struct X509_crl_info_st {
@@ -186,9 +186,9 @@ struct x509_st {
     X509_CERT_AUX *aux;
     CRYPTO_RWLOCK *lock;
     volatile int ex_cached;
-# ifndef OPENSSL_NO_SM2
-    ASN1_OCTET_STRING *sm2_id;
-# endif
+
+    /* Set on live certificates for authentication purposes */
+    ASN1_OCTET_STRING *distinguishing_id;
 } /* X509 */ ;
 
 /*
@@ -227,8 +227,11 @@ struct x509_store_ctx_st {      /* X509_STORE_CTX */
     int (*cert_crl) (X509_STORE_CTX *ctx, X509_CRL *crl, X509 *x);
     /* Check policy status of the chain */
     int (*check_policy) (X509_STORE_CTX *ctx);
-    STACK_OF(X509) *(*lookup_certs) (X509_STORE_CTX *ctx, X509_NAME *nm);
-    STACK_OF(X509_CRL) *(*lookup_crls) (X509_STORE_CTX *ctx, X509_NAME *nm);
+    STACK_OF(X509) *(*lookup_certs) (X509_STORE_CTX *ctx,
+                                     const X509_NAME *nm);
+    /* cannot constify 'ctx' param due to lookup_certs_sk() in x509_vfy.c */
+    STACK_OF(X509_CRL) *(*lookup_crls) (const X509_STORE_CTX *ctx,
+                                        const X509_NAME *nm);
     int (*cleanup) (X509_STORE_CTX *ctx);
     /* The following is built up */
     /* if 0, rebuild chain */

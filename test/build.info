@@ -49,8 +49,7 @@ IF[{- !$disabled{tests} -}]
           cipherbytes_test \
           asn1_encode_test asn1_decode_test asn1_string_table_test \
           x509_time_test x509_dup_cert_test x509_check_cert_pkey_test \
-          recordlentest drbgtest sslbuffertest \
-          recordlentest drbgtest drbg_cavs_test sslbuffertest \
+          recordlentest drbgtest drbg_cavs_test drbg_extra_test sslbuffertest \
           time_offset_test pemtest ssl_cert_table_internal_test ciphername_test \
           servername_test ocspapitest fatalerrtest tls13ccstest \
           sysdefaulttest errtest ssl_ctx_test gosttest \
@@ -144,7 +143,7 @@ IF[{- !$disabled{tests} -}]
 
   SOURCE[evp_pkey_provided_test]=evp_pkey_provided_test.c
   INCLUDE[evp_pkey_provided_test]=../include ../apps/include
-  DEPEND[evp_pkey_provided_test]=../libcrypto libtestutil.a
+  DEPEND[evp_pkey_provided_test]=../libcrypto.a libtestutil.a
 
   IF[{- !$disabled{'deprecated-3.0'} -}]
     PROGRAMS{noinst}=igetest bftest casttest
@@ -357,6 +356,10 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[drbg_cavs_test]=../include ../apps/include . .. ../crypto/include
   DEPEND[drbg_cavs_test]=../libcrypto libtestutil.a
 
+  SOURCE[drbg_extra_test]=drbg_extra_test.c
+  INCLUDE[drbg_extra_test]=../include . .. ../apps/include
+  DEPEND[drbg_extra_test]=../libcrypto libtestutil.a
+
   SOURCE[x509_dup_cert_test]=x509_dup_cert_test.c
   INCLUDE[x509_dup_cert_test]=../include ../apps/include
   DEPEND[x509_dup_cert_test]=../libcrypto libtestutil.a
@@ -438,7 +441,8 @@ IF[{- !$disabled{tests} -}]
 
   IF[{- !$disabled{cmp} -}]
     PROGRAMS{noinst}=cmp_asn_test cmp_ctx_test cmp_status_test cmp_hdr_test \
-                     cmp_protect_test cmp_msg_test cmp_vfy_test
+                     cmp_protect_test cmp_msg_test cmp_vfy_test \
+                     cmp_server_test cmp_client_test
   ENDIF
 
   SOURCE[cmp_asn_test]=cmp_asn_test.c cmp_testlib.c
@@ -465,9 +469,17 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[cmp_msg_test]=.. ../include ../apps/include
   DEPEND[cmp_msg_test]=../libcrypto.a libtestutil.a
 
-  SOURCE[cmp_vfy_test]=cmp_status_test.c cmp_testlib.c
+  SOURCE[cmp_vfy_test]=cmp_vfy_test.c cmp_testlib.c
   INCLUDE[cmp_vfy_test]=.. ../include ../apps/include
   DEPEND[cmp_vfy_test]=../libcrypto.a libtestutil.a
+
+  SOURCE[cmp_server_test]=cmp_server_test.c cmp_testlib.c
+  INCLUDE[cmp_server_test]=.. ../include ../apps/include
+  DEPEND[cmp_server_test]=../libcrypto.a libtestutil.a
+
+  SOURCE[cmp_client_test]=cmp_client_test.c cmp_testlib.c ../apps/cmp_mock_srv.c
+  INCLUDE[cmp_client_test]=.. ../include ../apps/include
+  DEPEND[cmp_client_test]=../libcrypto.a libtestutil.a
 
   # Internal test programs.  These are essentially a collection of internal
   # test routines.  Some of them need to reach internal symbols that aren't
@@ -716,8 +728,8 @@ IF[{- !$disabled{tests} -}]
     DEFINE[provider_test]=NO_PROVIDER_MODULE
     DEFINE[provider_internal_test]=NO_PROVIDER_MODULE
   ENDIF
-  DEPEND[]=provider_internal_test.conf
-  GENERATE[provider_internal_test.conf]=provider_internal_test.conf.in
+  DEPEND[]=provider_internal_test.cnf
+  GENERATE[provider_internal_test.cnf]=provider_internal_test.cnf.in
 
   PROGRAMS{noinst}=params_test
   SOURCE[params_test]=params_test.c

@@ -26,7 +26,7 @@
 #include "internal/cryptlib.h"
 #include "internal/property.h"
 #include "internal/nelem.h"
-#include "internal/param_build.h"
+#include "openssl/param_build.h"
 #include "crypto/evp.h"
 #include "prov/implementations.h"
 #include "prov/provider_ctx.h"
@@ -69,6 +69,7 @@ static OSSL_CRYPTO_secure_zalloc_fn *c_CRYPTO_secure_zalloc;
 static OSSL_CRYPTO_secure_free_fn *c_CRYPTO_secure_free;
 static OSSL_CRYPTO_secure_clear_free_fn *c_CRYPTO_secure_clear_free;
 static OSSL_CRYPTO_secure_allocated_fn *c_CRYPTO_secure_allocated;
+static OSSL_BIO_vsnprintf_fn *c_BIO_vsnprintf;
 
 typedef struct fips_global_st {
     const OSSL_PROVIDER *prov;
@@ -193,7 +194,7 @@ static int dsa_key_signature_test(OPENSSL_CTX *libctx)
     BIGNUM *p = NULL, *q = NULL, *g = NULL;
     BIGNUM *pub = NULL, *priv = NULL;
     OSSL_PARAM *params = NULL, *params_sig = NULL;
-    OSSL_PARAM_BLD bld;
+    OSSL_PARAM_BLD *bld = NULL;
     EVP_PKEY_CTX *sctx = NULL, *kctx = NULL;
     EVP_PKEY *pkey = NULL;
     unsigned char sig[64];
@@ -254,14 +255,15 @@ static int dsa_key_signature_test(OPENSSL_CTX *libctx)
         || !hextobn(dsa_priv_hex, &priv))
         goto err;
 
-    ossl_param_bld_init(&bld);
-    if (!ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_P, p)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_Q, q)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_G, g)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_PUB_KEY, pub)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_PRIV_KEY, priv))
+    bld = OSSL_PARAM_BLD_new();
+    if (bld == NULL
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_P, p)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_Q, q)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_G, g)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PUB_KEY, pub)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PRIV_KEY, priv))
         goto err;
-    params = ossl_param_bld_to_param(&bld);
+    params = OSSL_PARAM_BLD_to_param(bld);
 
     /* Create a EVP_PKEY_CTX to load the DSA key into */
     kctx = EVP_PKEY_CTX_new_from_name(libctx, SN_dsa, "");
@@ -278,11 +280,10 @@ static int dsa_key_signature_test(OPENSSL_CTX *libctx)
         goto err;
 
     /* set signature parameters */
-    ossl_param_bld_init(&bld);
-    if (!ossl_param_bld_push_utf8_string(&bld, OSSL_SIGNATURE_PARAM_DIGEST,
+    if (!OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_SIGNATURE_PARAM_DIGEST,
                                          SN_sha256,strlen(SN_sha256) + 1))
         goto err;
-    params_sig = ossl_param_bld_to_param(&bld);
+    params_sig = OSSL_PARAM_BLD_to_param(bld);
     if (EVP_PKEY_CTX_set_params(sctx, params_sig) <= 0)
         goto err;
 
@@ -292,8 +293,9 @@ static int dsa_key_signature_test(OPENSSL_CTX *libctx)
         goto err;
     ret = 1;
 err:
-    ossl_param_bld_free(params);
-    ossl_param_bld_free(params_sig);
+    OSSL_PARAM_BLD_free_params(params);
+    OSSL_PARAM_BLD_free_params(params_sig);
+    OSSL_PARAM_BLD_free(bld);
     BN_free(p);
     BN_free(q);
     BN_free(g);
@@ -319,7 +321,7 @@ static int dh_key_exchange_test(OPENSSL_CTX *libctx)
     OSSL_PARAM *params_peer = NULL;
     unsigned char secret[256];
     size_t secret_len, kat_secret_len = 0;
-    OSSL_PARAM_BLD bld;
+    OSSL_PARAM_BLD *bld = NULL;
 
     /* DH KAT */
     static const char *dh_p_hex[] = {
@@ -403,23 +405,23 @@ static int dh_key_exchange_test(OPENSSL_CTX *libctx)
         || !hextobin(dh_secret_exptd_hex, &kat_secret, &kat_secret_len))
         goto err;
 
-    ossl_param_bld_init(&bld);
-    if (!ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_P, p)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_Q, q)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_G, g)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_PUB_KEY, pub)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_PRIV_KEY, priv))
+    bld = OSSL_PARAM_BLD_new();
+    if (bld == NULL
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_P, p)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_Q, q)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_G, g)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PUB_KEY, pub)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PRIV_KEY, priv))
         goto err;
-    params = ossl_param_bld_to_param(&bld);
+    params = OSSL_PARAM_BLD_to_param(bld);
 
-    ossl_param_bld_init(&bld);
-    if (!ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_P, p)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_Q, q)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_FFC_G, g)
-        || !ossl_param_bld_push_BN(&bld, OSSL_PKEY_PARAM_PUB_KEY, pub_peer))
+    if (!OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_P, p)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_Q, q)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_G, g)
+        || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PUB_KEY, pub_peer))
         goto err;
 
-    params_peer = ossl_param_bld_to_param(&bld);
+    params_peer = OSSL_PARAM_BLD_to_param(bld);
     if (params == NULL || params_peer == NULL)
         goto err;
 
@@ -449,8 +451,9 @@ static int dh_key_exchange_test(OPENSSL_CTX *libctx)
         goto err;
     ret = 1;
 err:
-    ossl_param_bld_free(params_peer);
-    ossl_param_bld_free(params);
+    OSSL_PARAM_BLD_free(bld);
+    OSSL_PARAM_BLD_free_params(params_peer);
+    OSSL_PARAM_BLD_free_params(params);
     BN_free(p);
     BN_free(q);
     BN_free(g);
@@ -795,12 +798,19 @@ static const OSSL_ALGORITHM fips_keyexch[] = {
 #ifndef OPENSSL_NO_DH
     { "DH:dhKeyAgreement", "provider=fips,fips=yes", dh_keyexch_functions },
 #endif
+#ifndef OPENSSL_NO_EC
+    { "ECDH", "provider=fips,fips=yes", ecdh_keyexch_functions },
+#endif
     { NULL, NULL, NULL }
 };
 
 static const OSSL_ALGORITHM fips_signature[] = {
 #ifndef OPENSSL_NO_DSA
     { "DSA:dsaEncryption", "provider=fips,fips=yes", dsa_signature_functions },
+#endif
+    { "RSA:rsaEncryption", "provider=fips,fips=yes", rsa_signature_functions },
+#ifndef OPENSSL_NO_EC
+    { "ECDSA", "provider=fips,fips=yes", ecdsa_signature_functions },
 #endif
     { NULL, NULL, NULL }
 };
@@ -818,6 +828,9 @@ static const OSSL_ALGORITHM fips_keymgmt[] = {
     { "DSA", "provider=fips,fips=yes", dsa_keymgmt_functions },
 #endif
     { "RSA:rsaEncryption", "provider=fips,fips=yes", rsa_keymgmt_functions },
+#ifndef OPENSSL_NO_EC
+    { "EC:id-ecPublicKey", "provider=fips,fips=yes", ec_keymgmt_functions },
+#endif
     { NULL, NULL, NULL }
 };
 
@@ -955,6 +968,9 @@ int OSSL_provider_init(const OSSL_PROVIDER *provider,
         case OSSL_FUNC_BIO_FREE:
             selftest_params.bio_free_cb = OSSL_get_BIO_free(in);
             break;
+        case OSSL_FUNC_BIO_VSNPRINTF:
+            c_BIO_vsnprintf = OSSL_get_BIO_vsnprintf(in);
+            break;
         case OSSL_FUNC_SELF_TEST_CB: {
             stcbfn = OSSL_get_self_test_cb(in);
             break;
@@ -966,12 +982,12 @@ int OSSL_provider_init(const OSSL_PROVIDER *provider,
     }
 
     if (stcbfn != NULL && c_get_libctx != NULL) {
-        stcbfn(c_get_libctx(provider), &selftest_params.event_cb,
-               &selftest_params.event_cb_arg);
+        stcbfn(c_get_libctx(provider), &selftest_params.cb,
+               &selftest_params.cb_arg);
     }
     else {
-        selftest_params.event_cb = NULL;
-        selftest_params.event_cb_arg = NULL;
+        selftest_params.cb = NULL;
+        selftest_params.cb_arg = NULL;
     }
 
     if (!c_get_params(provider, core_params))
@@ -1154,4 +1170,15 @@ void CRYPTO_secure_clear_free(void *ptr, size_t num, const char *file, int line)
 int CRYPTO_secure_allocated(const void *ptr)
 {
     return c_CRYPTO_secure_allocated(ptr);
+}
+
+int BIO_snprintf(char *buf, size_t n, const char *format, ...)
+{
+    va_list args;
+    int ret;
+
+    va_start(args, format);
+    ret = c_BIO_vsnprintf(buf, n, format, args);
+    va_end(args);
+    return ret;
 }
