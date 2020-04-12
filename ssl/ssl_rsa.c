@@ -14,6 +14,7 @@
 #include <openssl/objects.h>
 #include <openssl/evp.h>
 #include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #include <openssl/pem.h>
 
 static int ssl_set_cert(CERT *c, X509 *x509);
@@ -29,6 +30,10 @@ int SSL_use_certificate(SSL *ssl, X509 *x)
     int rv;
     if (x == NULL) {
         SSLerr(SSL_F_SSL_USE_CERTIFICATE, ERR_R_PASSED_NULL_PARAMETER);
+        return 0;
+    }
+    if (!X509v3_cache_extensions(x, ssl->ctx->libctx, ssl->ctx->propq)) {
+        SSLerr(0, ERR_LIB_X509);
         return 0;
     }
     rv = ssl_security_cert(ssl, NULL, x, 0, 1);
@@ -305,6 +310,10 @@ int SSL_CTX_use_certificate(SSL_CTX *ctx, X509 *x)
         SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
     }
+    if (!X509v3_cache_extensions(x, ctx->libctx, ctx->propq)) {
+        SSLerr(0, ERR_LIB_X509);
+        return 0;
+    }
     rv = ssl_security_cert(NULL, ctx, x, 0, 1);
     if (rv != 1) {
         SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE, rv);
@@ -329,7 +338,7 @@ static int ssl_set_cert(CERT *c, X509 *x)
         return 0;
     }
 #ifndef OPENSSL_NO_EC
-    if (i == SSL_PKEY_ECC && !EC_KEY_can_sign(EVP_PKEY_get0_EC_KEY(pkey))) {
+    if (i == SSL_PKEY_ECC && !EVP_PKEY_can_sign(pkey)) {
         SSLerr(SSL_F_SSL_SET_CERT, SSL_R_ECC_CERT_NOT_FOR_SIGNING);
         return 0;
     }
@@ -1046,8 +1055,14 @@ static int ssl_set_cert_and_key(SSL *ssl, SSL_CTX *ctx, X509 *x509, EVP_PKEY *pr
     int j;
     int rv;
     CERT *c = ssl != NULL ? ssl->cert : ctx->cert;
+    SSL_CTX *actualctx = ssl == NULL ? ctx : ssl->ctx;
     STACK_OF(X509) *dup_chain = NULL;
     EVP_PKEY *pubkey = NULL;
+
+    if (!X509v3_cache_extensions(x509, actualctx->libctx, actualctx->propq)) {
+        SSLerr(0, ERR_R_X509_LIB);
+        goto out;
+    }
 
     /* Do all security checks before anything else */
     rv = ssl_security_cert(ssl, ctx, x509, 0, 1);

@@ -291,6 +291,7 @@ CMS_F_CMS_RECEIPTREQUEST_CREATE0:159:CMS_ReceiptRequest_create0
 CMS_F_CMS_RECEIPT_VERIFY:160:cms_Receipt_verify
 CMS_F_CMS_RECIPIENTINFO_DECRYPT:134:CMS_RecipientInfo_decrypt
 CMS_F_CMS_RECIPIENTINFO_ENCRYPT:169:CMS_RecipientInfo_encrypt
+CMS_F_CMS_RECIPIENTINFO_KARI_DECRYPT:188:
 CMS_F_CMS_RECIPIENTINFO_KARI_ENCRYPT:178:cms_RecipientInfo_kari_encrypt
 CMS_F_CMS_RECIPIENTINFO_KARI_GET0_ALG:175:CMS_RecipientInfo_kari_get0_alg
 CMS_F_CMS_RECIPIENTINFO_KARI_GET0_ORIG_ID:173:\
@@ -2088,6 +2089,7 @@ CMP_R_CERTREQMSG_NOT_FOUND:157:certreqmsg not found
 CMP_R_CERTRESPONSE_NOT_FOUND:113:certresponse not found
 CMP_R_CERT_AND_KEY_DO_NOT_MATCH:114:cert and key do not match
 CMP_R_CHECKAFTER_OUT_OF_RANGE:181:checkafter out of range
+CMP_R_CHECKING_PBM_NO_SECRET_AVAILABLE:166:checking pbm no secret available
 CMP_R_ENCOUNTERED_KEYUPDATEWARNING:176:encountered keyupdatewarning
 CMP_R_ENCOUNTERED_WAITING:162:encountered waiting
 CMP_R_ERROR_CALCULATING_PROTECTION:115:error calculating protection
@@ -2600,12 +2602,13 @@ HTTP_R_MAX_RESP_LEN_EXCEEDED:117:max resp len exceeded
 HTTP_R_MISSING_ASN1_ENCODING:110:missing asn1 encoding
 HTTP_R_MISSING_CONTENT_TYPE:121:missing content type
 HTTP_R_MISSING_REDIRECT_LOCATION:111:missing redirect location
+HTTP_R_RECEIVED_ERROR:105:received error
+HTTP_R_RECEIVED_WRONG_HTTP_VERSION:106:received wrong http version
 HTTP_R_REDIRECTION_FROM_HTTPS_TO_HTTP:112:redirection from https to http
 HTTP_R_REDIRECTION_NOT_ENABLED:116:redirection not enabled
 HTTP_R_RESPONSE_LINE_TOO_LONG:113:response line too long
-HTTP_R_SERVER_RESPONSE_PARSE_ERROR:104:server response parse error
-HTTP_R_SERVER_SENT_ERROR:105:server sent error
-HTTP_R_SERVER_SENT_WRONG_HTTP_VERSION:106:server sent wrong http version
+HTTP_R_RESPONSE_PARSE_ERROR:104:response parse error
+HTTP_R_SOCK_NOT_SUPPORTED:122:sock not supported
 HTTP_R_STATUS_CODE_UNSUPPORTED:114:status code unsupported
 HTTP_R_TLS_NOT_ENABLED:107:tls not enabled
 HTTP_R_TOO_MANY_REDIRECTIONS:115:too many redirections
