@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2011-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -161,7 +161,7 @@ static void *drbg_ossl_ctx_new(OPENSSL_CTX *libctx)
     if (dgbl == NULL)
         return NULL;
 
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     /*
      * We need to ensure that base libcrypto thread handling has been
      * initialised.
@@ -468,7 +468,7 @@ static RAND_DRBG *rand_drbg_new(OPENSSL_CTX *ctx,
     drbg->parent = parent;
 
     if (parent == NULL) {
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
         drbg->get_entropy = rand_crngt_get_entropy;
         drbg->cleanup_entropy = rand_crngt_cleanup_entropy;
 #else
@@ -552,7 +552,7 @@ void RAND_DRBG_free(RAND_DRBG *drbg)
         drbg->meth->uninstantiate(drbg);
     rand_pool_free(drbg->adin_pool);
     CRYPTO_THREAD_lock_free(drbg->lock);
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     CRYPTO_free_ex_data(CRYPTO_EX_INDEX_RAND_DRBG, drbg, &drbg->ex_data);
 #endif
 
@@ -1143,7 +1143,7 @@ int rand_drbg_enable_locking(RAND_DRBG *drbg)
     return 1;
 }
 
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
 /*
  * Get and set the EXDATA
  */
@@ -1287,7 +1287,7 @@ static int drbg_add(const void *buf, int num, double randomness)
 
     buflen = (size_t)num;
 
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
     /*
      * NIST SP-800-90A mandates that entropy *shall not* be provided
      * by the consuming application. By setting the randomness to zero,
@@ -1458,7 +1458,7 @@ RAND_METHOD rand_meth = {
 
 RAND_METHOD *RAND_OpenSSL(void)
 {
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     return &rand_meth;
 #else
     return NULL;

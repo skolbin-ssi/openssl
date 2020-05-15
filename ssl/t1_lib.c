@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -25,6 +25,10 @@
 #include "internal/evp.h"
 #include "ssl_local.h"
 #include <openssl/ct.h>
+
+DEFINE_STACK_OF_CONST(SSL_CIPHER)
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_NAME)
 
 static const SIGALG_LOOKUP *find_sig_alg(SSL *s, X509 *x, EVP_PKEY *pkey);
 static int tls12_sigalg_allowed(const SSL *s, int op, const SIGALG_LOOKUP *lu);
@@ -142,44 +146,53 @@ int tls1_clear(SSL *s)
 #if !defined(OPENSSL_NO_DH) || !defined(OPENSSL_NO_EC)
 static const TLS_GROUP_INFO nid_list[] = {
 # ifndef OPENSSL_NO_EC
-    {NID_sect163k1, 80, TLS_GROUP_CURVE_CHAR2, 0x0001}, /* sect163k1 (1) */
-    {NID_sect163r1, 80, TLS_GROUP_CURVE_CHAR2, 0x0002}, /* sect163r1 (2) */
-    {NID_sect163r2, 80, TLS_GROUP_CURVE_CHAR2, 0x0003}, /* sect163r2 (3) */
-    {NID_sect193r1, 80, TLS_GROUP_CURVE_CHAR2, 0x0004}, /* sect193r1 (4) */
-    {NID_sect193r2, 80, TLS_GROUP_CURVE_CHAR2, 0x0005}, /* sect193r2 (5) */
-    {NID_sect233k1, 112, TLS_GROUP_CURVE_CHAR2, 0x0006}, /* sect233k1 (6) */
-    {NID_sect233r1, 112, TLS_GROUP_CURVE_CHAR2, 0x0007}, /* sect233r1 (7) */
-    {NID_sect239k1, 112, TLS_GROUP_CURVE_CHAR2, 0x0008}, /* sect239k1 (8) */
-    {NID_sect283k1, 128, TLS_GROUP_CURVE_CHAR2, 0x0009}, /* sect283k1 (9) */
-    {NID_sect283r1, 128, TLS_GROUP_CURVE_CHAR2, 0x000A}, /* sect283r1 (10) */
-    {NID_sect409k1, 192, TLS_GROUP_CURVE_CHAR2, 0x000B}, /* sect409k1 (11) */
-    {NID_sect409r1, 192, TLS_GROUP_CURVE_CHAR2, 0x000C}, /* sect409r1 (12) */
-    {NID_sect571k1, 256, TLS_GROUP_CURVE_CHAR2, 0x000D}, /* sect571k1 (13) */
-    {NID_sect571r1, 256, TLS_GROUP_CURVE_CHAR2, 0x000E}, /* sect571r1 (14) */
-    {NID_secp160k1, 80, TLS_GROUP_CURVE_PRIME, 0x000F}, /* secp160k1 (15) */
-    {NID_secp160r1, 80, TLS_GROUP_CURVE_PRIME, 0x0010}, /* secp160r1 (16) */
-    {NID_secp160r2, 80, TLS_GROUP_CURVE_PRIME, 0x0011}, /* secp160r2 (17) */
-    {NID_secp192k1, 80, TLS_GROUP_CURVE_PRIME, 0x0012}, /* secp192k1 (18) */
-    {NID_X9_62_prime192v1, 80, TLS_GROUP_CURVE_PRIME, 0x0013}, /* secp192r1 (19) */
-    {NID_secp224k1, 112, TLS_GROUP_CURVE_PRIME, 0x0014}, /* secp224k1 (20) */
-    {NID_secp224r1, 112, TLS_GROUP_CURVE_PRIME, 0x0015}, /* secp224r1 (21) */
-    {NID_secp256k1, 128, TLS_GROUP_CURVE_PRIME, 0x0016}, /* secp256k1 (22) */
-    {NID_X9_62_prime256v1, 128, TLS_GROUP_CURVE_PRIME, 0x0017}, /* secp256r1 (23) */
-    {NID_secp384r1, 192, TLS_GROUP_CURVE_PRIME, 0x0018}, /* secp384r1 (24) */
-    {NID_secp521r1, 256, TLS_GROUP_CURVE_PRIME, 0x0019}, /* secp521r1 (25) */
-    {NID_brainpoolP256r1, 128, TLS_GROUP_CURVE_PRIME, 0x001A}, /* brainpoolP256r1 (26) */
-    {NID_brainpoolP384r1, 192, TLS_GROUP_CURVE_PRIME, 0x001B}, /* brainpoolP384r1 (27) */
-    {NID_brainpoolP512r1, 256, TLS_GROUP_CURVE_PRIME, 0x001C}, /* brainpool512r1 (28) */
-    {EVP_PKEY_X25519, 128, TLS_GROUP_CURVE_CUSTOM, 0x001D}, /* X25519 (29) */
-    {EVP_PKEY_X448, 224, TLS_GROUP_CURVE_CUSTOM, 0x001E}, /* X448 (30) */
+    {NID_sect163k1, "EC", 80, TLS_GROUP_CURVE_CHAR2, 0x0001}, /* sect163k1 (1) */
+    {NID_sect163r1, "EC", 80, TLS_GROUP_CURVE_CHAR2, 0x0002}, /* sect163r1 (2) */
+    {NID_sect163r2, "EC", 80, TLS_GROUP_CURVE_CHAR2, 0x0003}, /* sect163r2 (3) */
+    {NID_sect193r1, "EC", 80, TLS_GROUP_CURVE_CHAR2, 0x0004}, /* sect193r1 (4) */
+    {NID_sect193r2, "EC", 80, TLS_GROUP_CURVE_CHAR2, 0x0005}, /* sect193r2 (5) */
+    {NID_sect233k1, "EC", 112, TLS_GROUP_CURVE_CHAR2, 0x0006}, /* sect233k1 (6) */
+    {NID_sect233r1, "EC", 112, TLS_GROUP_CURVE_CHAR2, 0x0007}, /* sect233r1 (7) */
+    {NID_sect239k1, "EC", 112, TLS_GROUP_CURVE_CHAR2, 0x0008}, /* sect239k1 (8) */
+    {NID_sect283k1, "EC", 128, TLS_GROUP_CURVE_CHAR2, 0x0009}, /* sect283k1 (9) */
+    {NID_sect283r1, "EC", 128, TLS_GROUP_CURVE_CHAR2, 0x000A}, /* sect283r1 (10) */
+    {NID_sect409k1, "EC", 192, TLS_GROUP_CURVE_CHAR2, 0x000B}, /* sect409k1 (11) */
+    {NID_sect409r1, "EC", 192, TLS_GROUP_CURVE_CHAR2, 0x000C}, /* sect409r1 (12) */
+    {NID_sect571k1, "EC", 256, TLS_GROUP_CURVE_CHAR2, 0x000D}, /* sect571k1 (13) */
+    {NID_sect571r1, "EC", 256, TLS_GROUP_CURVE_CHAR2, 0x000E}, /* sect571r1 (14) */
+    {NID_secp160k1, "EC", 80, TLS_GROUP_CURVE_PRIME, 0x000F}, /* secp160k1 (15) */
+    {NID_secp160r1, "EC", 80, TLS_GROUP_CURVE_PRIME, 0x0010}, /* secp160r1 (16) */
+    {NID_secp160r2, "EC", 80, TLS_GROUP_CURVE_PRIME, 0x0011}, /* secp160r2 (17) */
+    {NID_secp192k1, "EC", 80, TLS_GROUP_CURVE_PRIME, 0x0012}, /* secp192k1 (18) */
+    {NID_X9_62_prime192v1, "EC", 80, TLS_GROUP_CURVE_PRIME, 0x0013}, /* secp192r1 (19) */
+    {NID_secp224k1, "EC", 112, TLS_GROUP_CURVE_PRIME, 0x0014}, /* secp224k1 (20) */
+    {NID_secp224r1, "EC", 112, TLS_GROUP_CURVE_PRIME, 0x0015}, /* secp224r1 (21) */
+    {NID_secp256k1, "EC", 128, TLS_GROUP_CURVE_PRIME, 0x0016}, /* secp256k1 (22) */
+    {NID_X9_62_prime256v1, "EC", 128, TLS_GROUP_CURVE_PRIME, 0x0017}, /* secp256r1 (23) */
+    {NID_secp384r1, "EC", 192, TLS_GROUP_CURVE_PRIME, 0x0018}, /* secp384r1 (24) */
+    {NID_secp521r1, "EC", 256, TLS_GROUP_CURVE_PRIME, 0x0019}, /* secp521r1 (25) */
+    {NID_brainpoolP256r1, "EC", 128, TLS_GROUP_CURVE_PRIME, 0x001A}, /* brainpoolP256r1 (26) */
+    {NID_brainpoolP384r1, "EC", 192, TLS_GROUP_CURVE_PRIME, 0x001B}, /* brainpoolP384r1 (27) */
+    {NID_brainpoolP512r1, "EC", 256, TLS_GROUP_CURVE_PRIME, 0x001C}, /* brainpool512r1 (28) */
+    {EVP_PKEY_X25519, "X25519", 128, TLS_GROUP_CURVE_CUSTOM, 0x001D}, /* X25519 (29) */
+    {EVP_PKEY_X448, "X448", 224, TLS_GROUP_CURVE_CUSTOM, 0x001E}, /* X448 (30) */
 # endif /* OPENSSL_NO_EC */
+# ifndef OPENSSL_NO_GOST
+    {NID_id_tc26_gost_3410_2012_256_paramSetA, "GOST_2012_256", 128, TLS_GROUP_CURVE_PRIME, 0x0022}, /* GC256A (34) */
+    {NID_id_tc26_gost_3410_2012_256_paramSetB, "GOST_2012_256", 128, TLS_GROUP_CURVE_PRIME, 0x0023}, /* GC256B (35) */
+    {NID_id_tc26_gost_3410_2012_256_paramSetC, "GOST_2012_256", 128, TLS_GROUP_CURVE_PRIME, 0x0024}, /* GC256C (36) */
+    {NID_id_tc26_gost_3410_2012_256_paramSetD, "GOST_2012_256", 128, TLS_GROUP_CURVE_PRIME, 0x0025}, /* GC256D (37) */
+    {NID_id_tc26_gost_3410_2012_512_paramSetA, "GOST_2012_512", 256, TLS_GROUP_CURVE_PRIME, 0x0026}, /* GC512A (38) */
+    {NID_id_tc26_gost_3410_2012_512_paramSetB, "GOST_2012_512", 256, TLS_GROUP_CURVE_PRIME, 0x0027}, /* GC512B (39) */
+    {NID_id_tc26_gost_3410_2012_512_paramSetC, "GOST_2012_512", 256, TLS_GROUP_CURVE_PRIME, 0x0028}, /* GC512C (40) */
+# endif /* OPENSSL_NO_GOST */
 # ifndef OPENSSL_NO_DH
     /* Security bit values for FFDHE groups are updated as per RFC 7919 */
-    {NID_ffdhe2048, 103, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0100}, /* ffdhe2048 (0x0100) */
-    {NID_ffdhe3072, 125, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0101}, /* ffdhe3072 (0x0101) */
-    {NID_ffdhe4096, 150, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0102}, /* ffdhe4096 (0x0102) */
-    {NID_ffdhe6144, 175, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0103}, /* ffdhe6144 (0x0103) */
-    {NID_ffdhe8192, 192, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0104}, /* ffdhe8192 (0x0104) */
+    {NID_ffdhe2048, "DH", 103, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0100}, /* ffdhe2048 (0x0100) */
+    {NID_ffdhe3072, "DH", 125, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0101}, /* ffdhe3072 (0x0101) */
+    {NID_ffdhe4096, "DH", 150, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0102}, /* ffdhe4096 (0x0102) */
+    {NID_ffdhe6144, "DH", 175, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0103}, /* ffdhe6144 (0x0103) */
+    {NID_ffdhe8192, "DH", 192, TLS_GROUP_FFDHE_FOR_TLS1_3, 0x0104}, /* ffdhe8192 (0x0104) */
 # endif /* OPENSSL_NO_DH */
 };
 #endif
@@ -201,6 +214,15 @@ static const uint16_t supported_groups_default[] = {
     30,                      /* X448 (30) */
     25,                      /* secp521r1 (25) */
     24,                      /* secp384r1 (24) */
+# endif
+# ifndef OPENSSL_NO_GOST
+    34,                      /* GC256A (34) */
+    35,                      /* GC256B (35) */
+    36,                      /* GC256C (36) */
+    37,                      /* GC256D (37) */
+    38,                      /* GC512A (38) */
+    39,                      /* GC512B (39) */
+    40,                      /* GC512C (40) */
 # endif
 # ifndef OPENSSL_NO_DH
     0x100,                   /* ffdhe2048 (0x100) */
@@ -752,6 +774,8 @@ static const uint16_t tls12_sigalgs[] = {
     TLSEXT_SIGALG_dsa_sha512,
 #endif
 #ifndef OPENSSL_NO_GOST
+    TLSEXT_SIGALG_gostr34102012_256_intrinsic,
+    TLSEXT_SIGALG_gostr34102012_512_intrinsic,
     TLSEXT_SIGALG_gostr34102012_256_gostr34112012_256,
     TLSEXT_SIGALG_gostr34102012_512_gostr34112012_512,
     TLSEXT_SIGALG_gostr34102001_gostr3411,
@@ -840,6 +864,14 @@ static const SIGALG_LOOKUP sigalg_lookup_tbl[] = {
      NID_dsaWithSHA1, NID_undef},
 #endif
 #ifndef OPENSSL_NO_GOST
+    {NULL, TLSEXT_SIGALG_gostr34102012_256_intrinsic,
+     NID_id_GostR3411_2012_256, SSL_MD_GOST12_256_IDX,
+     NID_id_GostR3410_2012_256, SSL_PKEY_GOST12_256,
+     NID_undef, NID_undef},
+    {NULL, TLSEXT_SIGALG_gostr34102012_512_intrinsic,
+     NID_id_GostR3411_2012_512, SSL_MD_GOST12_512_IDX,
+     NID_id_GostR3410_2012_512, SSL_PKEY_GOST12_512,
+     NID_undef, NID_undef},
     {NULL, TLSEXT_SIGALG_gostr34102012_256_gostr34112012_256,
      NID_id_GostR3411_2012_256, SSL_MD_GOST12_256_IDX,
      NID_id_GostR3410_2012_256, SSL_PKEY_GOST12_256,
@@ -872,8 +904,8 @@ static const uint16_t tls_default_sigalg[] = {
     TLSEXT_SIGALG_dsa_sha1, /* SSL_PKEY_DSA_SIGN */
     TLSEXT_SIGALG_ecdsa_sha1, /* SSL_PKEY_ECC */
     TLSEXT_SIGALG_gostr34102001_gostr3411, /* SSL_PKEY_GOST01 */
-    TLSEXT_SIGALG_gostr34102012_256_gostr34112012_256, /* SSL_PKEY_GOST12_256 */
-    TLSEXT_SIGALG_gostr34102012_512_gostr34112012_512, /* SSL_PKEY_GOST12_512 */
+    TLSEXT_SIGALG_gostr34102012_256_intrinsic, /* SSL_PKEY_GOST12_256 */
+    TLSEXT_SIGALG_gostr34102012_512_intrinsic, /* SSL_PKEY_GOST12_512 */
     0, /* SSL_PKEY_ED25519 */
     0, /* SSL_PKEY_ED448 */
 };
@@ -2249,7 +2281,7 @@ static int tls1_check_sig_alg(SSL *s, X509 *x, int default_nid)
         sigalg = use_pc_sigalgs
                  ? tls1_lookup_sigalg(s->s3.tmp.peer_cert_sigalgs[i])
                  : s->shared_sigalgs[i];
-        if (sig_nid == sigalg->sigandhash)
+        if (sigalg != NULL && sig_nid == sigalg->sigandhash)
             return 1;
     }
     return 0;

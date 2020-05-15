@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -20,6 +20,17 @@
 #include "crypto/evp.h"
 #include "evp_local.h"
 
+#if !defined(FIPS_MODULE) && !defined(OPENSSL_NO_EC)
+# define TMP_SM2_HACK
+#endif
+
+/* TODO(3.0) remove when provider SM2 key generation is implemented */
+#ifdef TMP_SM2_HACK
+# include <openssl/ec.h>
+# include <openssl/serializer.h>
+# include "internal/sizes.h"
+#endif
+
 static int gen_init(EVP_PKEY_CTX *ctx, int operation)
 {
     int ret = 0;
@@ -32,6 +43,12 @@ static int gen_init(EVP_PKEY_CTX *ctx, int operation)
 
     if (ctx->keymgmt == NULL || ctx->keymgmt->gen_init == NULL)
         goto legacy;
+
+/* TODO remove when provider SM2 key generation is implemented */
+#ifdef TMP_SM2_HACK
+    if (ctx->pmeth != NULL && ctx->pmeth->pkey_id == EVP_PKEY_SM2)
+        goto legacy;
+#endif
 
     switch (operation) {
     case EVP_PKEY_OP_PARAMGEN:
@@ -52,7 +69,7 @@ static int gen_init(EVP_PKEY_CTX *ctx, int operation)
     goto end;
 
  legacy:
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
     goto not_supported;
 #else
     if (ctx->pmeth == NULL
@@ -76,8 +93,10 @@ static int gen_init(EVP_PKEY_CTX *ctx, int operation)
 #endif
 
  end:
-    if (ret <= 0)
+    if (ret <= 0 && ctx != NULL) {
+        evp_pkey_ctx_free_old_ops(ctx);
         ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    }
     return ret;
 
  not_supported:
@@ -143,7 +162,7 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
         return -1;
     }
 
-    if (ctx->keymgmt == NULL || ctx->op.keymgmt.genctx == NULL)
+    if (ctx->op.keymgmt.genctx == NULL)
         goto legacy;
 
     ret = 1;
@@ -153,8 +172,12 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
             evp_pkey_export_to_provider(ctx->pkey, ctx->libctx,
                                         &tmp_keymgmt, ctx->propquery);
 
-        if (keydata == NULL)
+        if (tmp_keymgmt == NULL)
             goto not_supported;
+        /*
+         * It's ok if keydata is NULL here.  The backend is expected to deal
+         * with that as it sees fit.
+         */
         ret = evp_keymgmt_gen_set_template(ctx->keymgmt,
                                            ctx->op.keymgmt.genctx, keydata);
     }
@@ -168,16 +191,42 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
                                  ossl_callback_to_pkey_gencb, ctx)
             != NULL);
 
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     /* In case |*ppkey| was originally a legacy key */
     if (ret)
         evp_pkey_free_legacy(*ppkey);
 #endif
 
+/* TODO remove when SM2 key have been cleanly separated from EC keys */
+#ifdef TMP_SM2_HACK
+    /*
+     * Legacy SM2 keys are implemented as EC_KEY with a twist.  The legacy
+     * key generation detects the SM2 curve and "magically" changes the pkey
+     * id accordingly.
+     * Since we don't have SM2 in the provider implementation, we need to
+     * downgrade the generated provider side key to a legacy one under the
+     * same conditions.
+     *
+     * THIS IS AN UGLY BUT TEMPORARY HACK
+     */
+    {
+        char curve_name[OSSL_MAX_NAME_SIZE] = "";
+
+        if (!EVP_PKEY_get_utf8_string_param(*ppkey, OSSL_PKEY_PARAM_EC_NAME,
+                                            curve_name, sizeof(curve_name),
+                                            NULL)
+            || strcmp(curve_name, "SM2") != 0)
+            goto end;
+    }
+
+    if (!evp_pkey_downgrade(*ppkey)
+        || !EVP_PKEY_set_alias_type(*ppkey, EVP_PKEY_SM2))
+        ret = 0;
+#endif
     goto end;
 
  legacy:
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
     goto not_supported;
 #else
     if (ctx->pkey && !evp_pkey_downgrade(ctx->pkey))
@@ -210,7 +259,7 @@ int EVP_PKEY_gen(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey)
     ERR_raise(ERR_LIB_EVP, EVP_R_OPERATON_NOT_INITIALIZED);
     ret = -1;
     goto end;
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
  not_accessible:
     ERR_raise(ERR_LIB_EVP, EVP_R_INACCESSIBLE_DOMAIN_PARAMETERS);
     ret = -1;
@@ -273,7 +322,7 @@ int EVP_PKEY_CTX_get_keygen_info(EVP_PKEY_CTX *ctx, int idx)
     return ctx->keygen_info[idx];
 }
 
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
 
 EVP_PKEY *EVP_PKEY_new_mac_key(int type, ENGINE *e,
                                const unsigned char *key, int keylen)
@@ -294,9 +343,9 @@ EVP_PKEY *EVP_PKEY_new_mac_key(int type, ENGINE *e,
     return mac_key;
 }
 
-#endif /* FIPS_MODE */
+#endif /* FIPS_MODULE */
 
-/*- All methods below can also be used in FIPS_MODE */
+/*- All methods below can also be used in FIPS_MODULE */
 
 static int fromdata_init(EVP_PKEY_CTX *ctx, int operation)
 {

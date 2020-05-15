@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -60,9 +60,9 @@ typedef enum {
 #define X509_LU_FAIL    0
 #endif
 
-DEFINE_STACK_OF(X509_LOOKUP)
-DEFINE_STACK_OF(X509_OBJECT)
-DEFINE_STACK_OF(X509_VERIFY_PARAM)
+DEFINE_OR_DECLARE_STACK_OF(X509_LOOKUP)
+DEFINE_OR_DECLARE_STACK_OF(X509_OBJECT)
+DEFINE_OR_DECLARE_STACK_OF(X509_VERIFY_PARAM)
 
 int X509_STORE_set_depth(X509_STORE *store, int depth);
 
@@ -585,6 +585,7 @@ int X509_VERIFY_PARAM_set_inh_flags(X509_VERIFY_PARAM *param,
                                     uint32_t flags);
 uint32_t X509_VERIFY_PARAM_get_inh_flags(const X509_VERIFY_PARAM *param);
 
+char *X509_VERIFY_PARAM_get0_host(X509_VERIFY_PARAM *param, int idx);
 int X509_VERIFY_PARAM_set1_host(X509_VERIFY_PARAM *param,
                                 const char *name, size_t namelen);
 int X509_VERIFY_PARAM_add1_host(X509_VERIFY_PARAM *param,
@@ -594,8 +595,10 @@ void X509_VERIFY_PARAM_set_hostflags(X509_VERIFY_PARAM *param,
 unsigned int X509_VERIFY_PARAM_get_hostflags(const X509_VERIFY_PARAM *param);
 char *X509_VERIFY_PARAM_get0_peername(const X509_VERIFY_PARAM *param);
 void X509_VERIFY_PARAM_move_peername(X509_VERIFY_PARAM *, X509_VERIFY_PARAM *);
+char *X509_VERIFY_PARAM_get0_email(X509_VERIFY_PARAM *param);
 int X509_VERIFY_PARAM_set1_email(X509_VERIFY_PARAM *param,
                                  const char *email, size_t emaillen);
+char *X509_VERIFY_PARAM_get1_ip_asc(X509_VERIFY_PARAM *param);
 int X509_VERIFY_PARAM_set1_ip(X509_VERIFY_PARAM *param,
                               const unsigned char *ip, size_t iplen);
 int X509_VERIFY_PARAM_set1_ip_asc(X509_VERIFY_PARAM *param,

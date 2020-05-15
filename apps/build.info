@@ -34,22 +34,25 @@ ENDIF
 IF[{- !$disabled{'ts'} -}]
   $OPENSSLSRC=$OPENSSLSRC ts.c
 ENDIF
+IF[{- !$disabled{'dh'} -}]
+$OPENSSLSRC=$OPENSSLSRC dhparam.c
+ENDIF
+IF[{- !$disabled{'dsa'} -}]
+$OPENSSLSRC=$OPENSSLSRC dsa.c dsaparam.c gendsa.c
+ENDIF
+IF[{- !$disabled{'engine'} -}]
+$OPENSSLSRC=$OPENSSLSRC engine.c
+ENDIF
+IF[{- !$disabled{'rsa'} -}]
+$OPENSSLSRC=$OPENSSLSRC rsa.c genrsa.c
+ENDIF
 IF[{- !$disabled{'deprecated-3.0'} -}]
-  IF[{- !$disabled{'dh'} -}]
-    $OPENSSLSRC=$OPENSSLSRC dhparam.c
-  ENDIF
-  IF[{- !$disabled{'dsa'} -}]
-    $OPENSSLSRC=$OPENSSLSRC dsa.c dsaparam.c gendsa.c
-  ENDIF
-  IF[{- !$disabled{'engine'} -}]
-    $OPENSSLSRC=$OPENSSLSRC engine.c
-  ENDIF
   IF[{- !$disabled{'rsa'} -}]
-    $OPENSSLSRC=$OPENSSLSRC rsa.c rsautl.c genrsa.c
+    $OPENSSLSRC=$OPENSSLSRC rsautl.c
   ENDIF
 ENDIF
 IF[{- !$disabled{'cmp'} -}]
-  $OPENSSLSRC=$OPENSSLSRC cmp_mock_srv.c
+  $OPENSSLSRC=$OPENSSLSRC cmp.c cmp_mock_srv.c
 ENDIF
 
 IF[{- !$disabled{apps} -}]
@@ -64,6 +67,9 @@ IF[{- !$disabled{apps} -}]
   # progs.pl tries to read all 'openssl' sources, including progs.c, so we make
   # sure things are generated in the correct order.
   DEPEND[progs.h]=progs.c
+  # Because the files to look through may change (depends on $OPENSSLSRC),
+  # always depend on a changed configuration.
+  DEPEND[progs.c]=../configdata.pm
 
   IF[{- $config{target} =~ /^(?:Cygwin|mingw|VC-)/ -}]
     GENERATE[openssl.rc]=../util/mkrc.pl openssl

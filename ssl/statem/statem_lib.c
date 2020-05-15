@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -20,6 +20,10 @@
 #include <openssl/evp.h>
 #include <openssl/x509.h>
 #include <openssl/trace.h>
+
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_NAME)
+DEFINE_STACK_OF_CONST(SSL_CIPHER)
 
 /*
  * Map error codes to TLS/SSL alart types.
@@ -2338,7 +2342,7 @@ int construct_ca_names(SSL *s, const STACK_OF(X509_NAME) *ca_sk, WPACKET *pkt)
         return 0;
     }
 
-    if (ca_sk != NULL) {
+    if ((ca_sk != NULL) && !(s->options & SSL_OP_DISABLE_TLSEXT_CA_NAMES)) {
         int i;
 
         for (i = 0; i < sk_X509_NAME_num(ca_sk); i++) {

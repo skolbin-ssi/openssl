@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -78,6 +78,8 @@ extern "C" {
 #endif
 
 int EVP_set_default_properties(OPENSSL_CTX *libctx, const char *propq);
+int EVP_default_properties_is_fips_enabled(OPENSSL_CTX *libctx);
+int EVP_default_properties_enable_fips(OPENSSL_CTX *libctx, int enable);
 
 # define EVP_PKEY_MO_SIGN        0x0001
 # define EVP_PKEY_MO_VERIFY      0x0002
@@ -435,7 +437,7 @@ typedef int (EVP_PBE_KEYGEN) (EVP_CIPHER_CTX *ctx, const char *pass,
 
 # ifndef OPENSSL_NO_RSA
 #  define EVP_PKEY_assign_RSA(pkey,rsa) EVP_PKEY_assign((pkey),EVP_PKEY_RSA,\
-                                        (rsa))
+                                                        (rsa))
 # endif
 
 # ifndef OPENSSL_NO_DSA
@@ -1163,8 +1165,14 @@ EVP_PKEY *d2i_PublicKey(int type, EVP_PKEY **a, const unsigned char **pp,
                         long length);
 int i2d_PublicKey(const EVP_PKEY *a, unsigned char **pp);
 
+
+EVP_PKEY *d2i_PrivateKey_ex(int type, EVP_PKEY **a, const unsigned char **pp,
+                            long length, OPENSSL_CTX *libctx, const char *propq);
 EVP_PKEY *d2i_PrivateKey(int type, EVP_PKEY **a, const unsigned char **pp,
                          long length);
+EVP_PKEY *d2i_AutoPrivateKey_ex(EVP_PKEY **a, const unsigned char **pp,
+                                long length, OPENSSL_CTX *libctx,
+                                const char *propq);
 EVP_PKEY *d2i_AutoPrivateKey(EVP_PKEY **a, const unsigned char **pp,
                              long length);
 int i2d_PrivateKey(const EVP_PKEY *a, unsigned char **pp);
@@ -1510,9 +1518,19 @@ void EVP_PKEY_CTX_set0_keygen_info(EVP_PKEY_CTX *ctx, int *dat, int datlen);
 
 EVP_PKEY *EVP_PKEY_new_mac_key(int type, ENGINE *e,
                                const unsigned char *key, int keylen);
+EVP_PKEY *EVP_PKEY_new_raw_private_key_with_libctx(OPENSSL_CTX *libctx,
+                                                   const char *keytype,
+                                                   const char *propq,
+                                                   const unsigned char *priv,
+                                                   size_t len);
 EVP_PKEY *EVP_PKEY_new_raw_private_key(int type, ENGINE *e,
                                        const unsigned char *priv,
                                        size_t len);
+EVP_PKEY *EVP_PKEY_new_raw_public_key_with_libctx(OPENSSL_CTX *libctx,
+                                                  const char *keytype,
+                                                  const char *propq,
+                                                  const unsigned char *pub,
+                                                  size_t len);
 EVP_PKEY *EVP_PKEY_new_raw_public_key(int type, ENGINE *e,
                                       const unsigned char *pub,
                                       size_t len);
@@ -1615,6 +1633,11 @@ int EVP_PKEY_public_check(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_param_check(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_private_check(EVP_PKEY_CTX *ctx);
 int EVP_PKEY_pairwise_check(EVP_PKEY_CTX *ctx);
+
+# define EVP_PKEY_get_ex_new_index(l, p, newf, dupf, freef) \
+    CRYPTO_get_ex_new_index(CRYPTO_EX_INDEX_EVP_PKEY, l, p, newf, dupf, freef)
+int EVP_PKEY_set_ex_data(EVP_PKEY *key, int idx, void *arg);
+void *EVP_PKEY_get_ex_data(const EVP_PKEY *key, int idx);
 
 void EVP_PKEY_CTX_set_cb(EVP_PKEY_CTX *ctx, EVP_PKEY_gen_cb *cb);
 EVP_PKEY_gen_cb *EVP_PKEY_CTX_get_cb(EVP_PKEY_CTX *ctx);

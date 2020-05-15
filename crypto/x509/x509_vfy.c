@@ -25,6 +25,13 @@
 #include "crypto/x509.h"
 #include "x509_local.h"
 
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_REVOKED)
+DEFINE_STACK_OF(GENERAL_NAME)
+DEFINE_STACK_OF(X509_CRL)
+DEFINE_STACK_OF(DIST_POINT)
+DEFINE_STACK_OF_STRING()
+
 /* CRL score values */
 
 /* No unhandled critical extensions */
@@ -334,7 +341,7 @@ static int check_issued(X509_STORE_CTX *ctx, X509 *x, X509 *issuer)
         return ss;
     }
 
-    ret = X509_check_issued(issuer, x);
+    ret = x509_check_issued_int(issuer, x, ctx->libctx, ctx->propq);
     if (ret == X509_V_OK) {
         int i;
         X509 *ch;
@@ -1763,7 +1770,7 @@ static int internal_verify(X509_STORE_CTX *ctx)
                 if (!verify_cb_cert(ctx, xi, xi != xs ? n+1 : n,
                         X509_V_ERR_UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY))
                     return 0;
-            } else if (X509_verify(xs, pkey) <= 0) {
+            } else if (X509_verify_ex(xs, pkey, ctx->libctx, ctx->propq) <= 0) {
                 if (!verify_cb_cert(ctx, xs, n,
                                     X509_V_ERR_CERT_SIGNATURE_FAILURE))
                     return 0;
@@ -2809,7 +2816,7 @@ static int check_dane_pkeys(X509_STORE_CTX *ctx)
         if (t->usage != DANETLS_USAGE_DANE_TA ||
             t->selector != DANETLS_SELECTOR_SPKI ||
             t->mtype != DANETLS_MATCHING_FULL ||
-            X509_verify(cert, t->spki) <= 0)
+            X509_verify_ex(cert, t->spki, ctx->libctx, ctx->propq) <= 0)
             continue;
 
         /* Clear any PKIX-?? matches that failed to extend to a full chain */
@@ -3251,6 +3258,7 @@ static int build_chain(X509_STORE_CTX *ctx)
             if (ss < 0) {
                 X509err(X509_F_BUILD_CHAIN, ERR_R_INTERNAL_ERROR);
                 ctx->error = X509_V_ERR_UNSPECIFIED;
+                sk_X509_free(sktmp);
                 return 0;
             }
 

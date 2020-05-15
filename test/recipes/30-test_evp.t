@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2018 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -80,11 +80,9 @@ plan tests =>
 
 unless ($no_fips) {
     my $infile = bldtop_file('providers', platform->dso('fips'));
-    $ENV{OPENSSL_MODULES} = bldtop_dir("providers");
-    $ENV{OPENSSL_CONF_INCLUDE} = bldtop_dir("providers");
 
     ok(run(app(['openssl', 'fipsinstall',
-                '-out', bldtop_file('providers', 'fipsinstall.cnf'),
+                '-out', bldtop_file('providers', 'fipsmodule.cnf'),
                 '-module', $infile,
                 '-provider_name', 'fips', '-mac_name', 'HMAC',
                 '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',

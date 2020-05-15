@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -297,3 +297,7 @@ int x509_set1_time(ASN1_TIME **ptm, const ASN1_TIME *tm);
 int x509_print_ex_brief(BIO *bio, X509 *cert, unsigned long neg_cflags);
 
 void x509_init_sig_info(X509 *x);
+
+
+int x509_check_issued_int(X509 *issuer, X509 *subject, OPENSSL_CTX *libctx,
+                          const char *propq);

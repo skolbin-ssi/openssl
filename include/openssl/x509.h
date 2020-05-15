@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -40,6 +40,11 @@
 extern "C" {
 #endif
 
+/* Needed stacks for types defined in other headers */
+DEFINE_OR_DECLARE_STACK_OF(X509_NAME)
+DEFINE_OR_DECLARE_STACK_OF(X509)
+DEFINE_OR_DECLARE_STACK_OF(X509_REVOKED)
+DEFINE_OR_DECLARE_STACK_OF(X509_CRL)
 
 /* Flags for X509_get_signature_info() */
 /* Signature info is valid */
@@ -77,32 +82,20 @@ typedef struct X509_val_st {
 typedef struct X509_sig_st X509_SIG;
 
 typedef struct X509_name_entry_st X509_NAME_ENTRY;
+DEFINE_OR_DECLARE_STACK_OF(X509_NAME_ENTRY)
 
-DEFINE_STACK_OF(X509_NAME_ENTRY)
-
-DEFINE_STACK_OF(X509_NAME)
 
 # define X509_EX_V_NETSCAPE_HACK         0x8000
 # define X509_EX_V_INIT                  0x0001
 typedef struct X509_extension_st X509_EXTENSION;
-
+DEFINE_OR_DECLARE_STACK_OF(X509_EXTENSION)
 typedef STACK_OF(X509_EXTENSION) X509_EXTENSIONS;
-
-DEFINE_STACK_OF(X509_EXTENSION)
-
 typedef struct x509_attributes_st X509_ATTRIBUTE;
-
-DEFINE_STACK_OF(X509_ATTRIBUTE)
-
+DEFINE_OR_DECLARE_STACK_OF(X509_ATTRIBUTE)
 typedef struct X509_req_info_st X509_REQ_INFO;
-
 typedef struct X509_req_st X509_REQ;
-
 typedef struct x509_cert_aux_st X509_CERT_AUX;
-
 typedef struct x509_cinf_st X509_CINF;
-
-DEFINE_STACK_OF(X509)
 
 /* This is used for a table of trust checking functions */
 
@@ -114,8 +107,8 @@ typedef struct x509_trust_st {
     int arg1;
     void *arg2;
 } X509_TRUST;
+DEFINE_OR_DECLARE_STACK_OF(X509_TRUST)
 
-DEFINE_STACK_OF(X509_TRUST)
 
 /* standard trust ids */
 
@@ -227,11 +220,7 @@ DEFINE_STACK_OF(X509_TRUST)
                         XN_FLAG_FN_LN | \
                         XN_FLAG_FN_ALIGN)
 
-DEFINE_STACK_OF(X509_REVOKED)
-
 typedef struct X509_crl_info_st X509_CRL_INFO;
-
-DEFINE_STACK_OF(X509_CRL)
 
 typedef struct private_key_st {
     int version;
@@ -256,8 +245,7 @@ typedef struct X509_info_st {
     int enc_len;
     char *enc_data;
 } X509_INFO;
-
-DEFINE_STACK_OF(X509_INFO)
+DEFINE_OR_DECLARE_STACK_OF(X509_INFO)
 
 /*
  * The next 2 structures and their 8 routines are used to manipulate Netscape's
@@ -355,8 +343,11 @@ void *X509_CRL_get_meth_data(X509_CRL *crl);
 
 const char *X509_verify_cert_error_string(long n);
 
+int X509_verify_ex(X509 *a, EVP_PKEY *r, OPENSSL_CTX *libctx, const char *propq);
 int X509_verify(X509 *a, EVP_PKEY *r);
 
+int X509_REQ_verify_ex(X509_REQ *a, EVP_PKEY *r, OPENSSL_CTX *libctx,
+                       const char *propq);
 int X509_REQ_verify(X509_REQ *a, EVP_PKEY *r);
 int X509_CRL_verify(X509_CRL *a, EVP_PKEY *r);
 int NETSCAPE_SPKI_verify(NETSCAPE_SPKI *a, EVP_PKEY *r);
@@ -435,6 +426,8 @@ PKCS8_PRIV_KEY_INFO *d2i_PKCS8_PRIV_KEY_INFO_fp(FILE *fp,
 int i2d_PKCS8_PRIV_KEY_INFO_fp(FILE *fp, const PKCS8_PRIV_KEY_INFO *p8inf);
 int i2d_PKCS8PrivateKeyInfo_fp(FILE *fp, const EVP_PKEY *key);
 int i2d_PrivateKey_fp(FILE *fp, const EVP_PKEY *pkey);
+EVP_PKEY *d2i_PrivateKey_ex_fp(FILE *fp, EVP_PKEY **a, OPENSSL_CTX *libctx,
+                               const char *propq);
 EVP_PKEY *d2i_PrivateKey_fp(FILE *fp, EVP_PKEY **a);
 int i2d_PUBKEY_fp(FILE *fp, const EVP_PKEY *pkey);
 EVP_PKEY *d2i_PUBKEY_fp(FILE *fp, EVP_PKEY **a);
@@ -475,6 +468,8 @@ PKCS8_PRIV_KEY_INFO *d2i_PKCS8_PRIV_KEY_INFO_bio(BIO *bp,
 int i2d_PKCS8_PRIV_KEY_INFO_bio(BIO *bp, const PKCS8_PRIV_KEY_INFO *p8inf);
 int i2d_PKCS8PrivateKeyInfo_bio(BIO *bp, const EVP_PKEY *key);
 int i2d_PrivateKey_bio(BIO *bp, const EVP_PKEY *pkey);
+EVP_PKEY *d2i_PrivateKey_ex_bio(BIO *bp, EVP_PKEY **a, OPENSSL_CTX *libctx,
+                                const char *propq);
 EVP_PKEY *d2i_PrivateKey_bio(BIO *bp, EVP_PKEY **a);
 int i2d_PUBKEY_bio(BIO *bp, const EVP_PKEY *pkey);
 EVP_PKEY *d2i_PUBKEY_bio(BIO *bp, EVP_PKEY **a);
@@ -493,6 +488,7 @@ void X509_ALGOR_get0(const ASN1_OBJECT **paobj, int *pptype,
                      const void **ppval, const X509_ALGOR *algor);
 void X509_ALGOR_set_md(X509_ALGOR *alg, const EVP_MD *md);
 int X509_ALGOR_cmp(const X509_ALGOR *a, const X509_ALGOR *b);
+int X509_ALGOR_copy(X509_ALGOR *dest, const X509_ALGOR *src);
 
 DECLARE_ASN1_DUP_FUNCTION(X509_NAME)
 DECLARE_ASN1_DUP_FUNCTION(X509_NAME_ENTRY)
@@ -700,6 +696,8 @@ X509_NAME *X509_REQ_get_subject_name(const X509_REQ *req); /* TODO change to get
 int X509_REQ_set_subject_name(X509_REQ *req, const X509_NAME *name);
 void X509_REQ_get0_signature(const X509_REQ *req, const ASN1_BIT_STRING **psig,
                              const X509_ALGOR **palg);
+void X509_REQ_set0_signature(X509_REQ *req, ASN1_BIT_STRING *psig);
+int X509_REQ_set1_signature_algo(X509_REQ *req, X509_ALGOR *palg);
 int X509_REQ_get_signature_nid(const X509_REQ *req);
 int i2d_re_X509_REQ_tbs(X509_REQ *req, unsigned char **pp);
 int X509_REQ_set_pubkey(X509_REQ *x, EVP_PKEY *pkey);

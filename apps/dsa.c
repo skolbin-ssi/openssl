@@ -1,14 +1,11 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
  * in the file LICENSE in the source distribution or at
  * https://www.openssl.org/source/license.html
  */
-
-/* We need to use the deprecated DSA_print */
-#define OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/opensslconf.h>
 
@@ -51,7 +48,7 @@ const OPTIONS dsa_options[] = {
 
     OPT_SECTION("Input"),
     {"in", OPT_IN, 's', "Input key"},
-    {"inform", OPT_INFORM, 'f', "Input format, DER PEM PVK"},
+    {"inform", OPT_INFORM, 'f', "Input format (DER/PEM/PVK); has no effect"},
     {"pubin", OPT_PUBIN, '-', "Expect a public key in input file"},
     {"passin", OPT_PASSIN, 's', "Input file pass phrase source"},
 
@@ -73,6 +70,7 @@ int dsa_main(int argc, char **argv)
     BIO *out = NULL;
     DSA *dsa = NULL;
     ENGINE *e = NULL;
+    EVP_PKEY *pkey = NULL;
     const EVP_CIPHER *enc = NULL;
     char *infile = NULL, *outfile = NULL, *prog;
     char *passin = NULL, *passout = NULL, *passinarg = NULL, *passoutarg = NULL;
@@ -166,19 +164,13 @@ int dsa_main(int argc, char **argv)
     }
 
     BIO_printf(bio_err, "read DSA key\n");
-    {
-        EVP_PKEY *pkey;
+    if (pubin)
+        pkey = load_pubkey(infile, informat, 1, passin, e, "Public Key");
+    else
+        pkey = load_key(infile, informat, 1, passin, e, "Private Key");
 
-        if (pubin)
-            pkey = load_pubkey(infile, informat, 1, passin, e, "Public Key");
-        else
-            pkey = load_key(infile, informat, 1, passin, e, "Private Key");
-
-        if (pkey != NULL) {
-            dsa = EVP_PKEY_get1_DSA(pkey);
-            EVP_PKEY_free(pkey);
-        }
-    }
+    if (pkey != NULL)
+        dsa = EVP_PKEY_get1_DSA(pkey);
 
     if (dsa == NULL) {
         BIO_printf(bio_err, "unable to load Key\n");
@@ -192,7 +184,8 @@ int dsa_main(int argc, char **argv)
 
     if (text) {
         assert(pubin || private);
-        if (!DSA_print(out, dsa, 0)) {
+        if ((pubin && EVP_PKEY_print_public(out, pkey, 0, NULL) <= 0)
+            || (!pubin && EVP_PKEY_print_private(out, pkey, 0, NULL) <= 0)) {
             perror(outfile);
             ERR_print_errors(bio_err);
             goto end;
@@ -269,6 +262,7 @@ int dsa_main(int argc, char **argv)
     ret = 0;
  end:
     BIO_free_all(out);
+    EVP_PKEY_free(pkey);
     DSA_free(dsa);
     release_engine(e);
     OPENSSL_free(passin);

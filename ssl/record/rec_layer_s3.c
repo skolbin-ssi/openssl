@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -384,10 +384,12 @@ int ssl3_write_bytes(SSL *s, int type, const void *buf_, size_t len,
     s->rlayer.wnum = 0;
 
     /*
-     * If we are supposed to be sending a KeyUpdate then go into init unless we
-     * have writes pending - in which case we should finish doing that first.
+     * If we are supposed to be sending a KeyUpdate or NewSessionTicket then go
+     * into init unless we have writes pending - in which case we should finish
+     * doing that first.
      */
-    if (wb->left == 0 && s->key_update != SSL_KEY_UPDATE_NONE)
+    if (wb->left == 0 && (s->key_update != SSL_KEY_UPDATE_NONE
+                          || s->ext.extra_tickets_expected > 0))
         ossl_statem_set_in_init(s, 1);
 
     /*

@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2017 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -12,6 +12,7 @@
 
 #include <openssl/rsa.h>
 #include "internal/refcount.h"
+#include "crypto/rsa.h"
 
 #define RSA_MAX_PRIME_NUM       5
 #define RSA_MIN_MODULUS_BITS    512
@@ -50,9 +51,19 @@ struct rsa_st {
     BIGNUM *dmp1;
     BIGNUM *dmq1;
     BIGNUM *iqmp;
-    /* If a PSS only key this contains the parameter restrictions */
+
+    /*
+     * If a PSS only key this contains the parameter restrictions.
+     * There are two structures for the same thing, used in different cases.
+     */
+    /* This is used uniquely by OpenSSL provider implementations. */
+    RSA_PSS_PARAMS_30 pss_params;
+#ifndef FIPS_MODULE
+    /* This is used uniquely by rsa_ameth.c and rsa_pmeth.c. */
     RSA_PSS_PARAMS *pss;
-#ifndef FIPS_MODE
+#endif
+
+#ifndef FIPS_MODULE
     /* for multi-prime RSA, defined in RFC 8017 */
     STACK_OF(RSA_PRIME_INFO) *prime_infos;
     /* Be careful using this if the RSA structure is shared */

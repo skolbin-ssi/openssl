@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -10,6 +10,8 @@
  */
 
 #include "cmp_testlib.h"
+
+DEFINE_STACK_OF(X509)
 
 static const char *ir_protected_f;
 static const char *ir_unprotected_f;
@@ -101,7 +103,7 @@ static int verify_signature(OSSL_CMP_MSG *msg,
                             ASN1_BIT_STRING *protection,
                             EVP_PKEY *pkey, int digest_nid)
 {
-    CMP_PROTECTEDPART prot_part;
+    OSSL_CMP_PROTECTEDPART prot_part;
     unsigned char *prot_part_der = NULL;
     int len;
     EVP_MD_CTX *ctx = NULL;
@@ -110,8 +112,9 @@ static int verify_signature(OSSL_CMP_MSG *msg,
 
     prot_part.header = OSSL_CMP_MSG_get0_header(msg);
     prot_part.body = msg->body;
+    len = i2d_OSSL_CMP_PROTECTEDPART(&prot_part, &prot_part_der);
     res =
-        TEST_int_ge(len = i2d_CMP_PROTECTEDPART(&prot_part, &prot_part_der), 0)
+        TEST_int_ge(len, 0)
         && TEST_ptr(ctx = EVP_MD_CTX_new())
         && TEST_true(EVP_DigestVerifyInit(ctx, NULL, digest, NULL, pkey))
         && TEST_int_eq(EVP_DigestVerify(ctx, protection->data,
@@ -239,7 +242,7 @@ static int test_MSG_protect_with_certificate_and_key(void)
                   OSSL_CMP_MSG_dup(ir_unprotected))
             || !TEST_true(SET_OPT_UNPROTECTED_SEND(fixture->cmp_ctx, 0))
             || !TEST_true(OSSL_CMP_CTX_set1_pkey(fixture->cmp_ctx, loadedkey))
-            || !TEST_true(OSSL_CMP_CTX_set1_clCert(fixture->cmp_ctx, cert))) {
+            || !TEST_true(OSSL_CMP_CTX_set1_cert(fixture->cmp_ctx, cert))) {
         tear_down(fixture);
         fixture = NULL;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2011-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -480,7 +480,7 @@ int drbg_ctr_init(RAND_DRBG *drbg)
         drbg->max_perslen = DRBG_MAX_LENGTH;
         drbg->max_adinlen = DRBG_MAX_LENGTH;
     } else {
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
         RANDerr(RAND_F_DRBG_CTR_INIT,
                 RAND_R_DERIVATION_FUNCTION_MANDATORY_FOR_FIPS);
         return 0;

@@ -1,6 +1,5 @@
-
 /*
- * Copyright 2006-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -9,7 +8,7 @@
  */
 
 /*
- * DH low level APIs are deprecated for public use, but still ok for
+ * Low level key APIs (DH etc) are deprecated for public use, but still ok for
  * internal use.
  */
 #include "internal/deprecated.h"
@@ -25,11 +24,13 @@
 #include "internal/cryptlib.h"
 #include "crypto/asn1.h"
 #include "crypto/evp.h"
+#include "crypto/dh.h"
+#include "internal/ffc.h"
 #include "internal/numbers.h"
 #include "internal/provider.h"
 #include "evp_local.h"
 
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
 
 typedef const EVP_PKEY_METHOD *(*pmeth_fn)(void);
 typedef int sk_cmp_fn_type(const char *const *a, const char *const *b);
@@ -134,7 +135,7 @@ EVP_PKEY_METHOD *EVP_PKEY_meth_new(int id, int flags)
     pmeth->flags = flags | EVP_PKEY_FLAG_DYNAMIC;
     return pmeth;
 }
-#endif /* FIPS_MODE */
+#endif /* FIPS_MODULE */
 
 static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
                                  EVP_PKEY *pkey, ENGINE *e,
@@ -164,7 +165,7 @@ static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
         keytype = evp_first_name(pkey->keymgmt->prov, pkey->keymgmt->name_id);
         goto common;
     }
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     /* TODO(3.0) Legacy code should be removed when all is provider based */
     /* BEGIN legacy */
     if (id == -1) {
@@ -220,7 +221,7 @@ static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
         return NULL;
     }
     /* END legacy */
-#endif /* FIPS_MODE */
+#endif /* FIPS_MODULE */
  common:
     /*
      * If there's no engine and there's a name, we try fetching a provider
@@ -235,7 +236,8 @@ static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
 
     ret = OPENSSL_zalloc(sizeof(*ret));
     if (ret == NULL) {
-#if !defined(OPENSSL_NO_ENGINE) && !defined(FIPS_MODE)
+        EVP_KEYMGMT_free(keymgmt);
+#if !defined(OPENSSL_NO_ENGINE) && !defined(FIPS_MODULE)
         ENGINE_finish(e);
 #endif
         EVPerr(EVP_F_INT_CTX_NEW, ERR_R_MALLOC_FAILURE);
@@ -263,7 +265,7 @@ static EVP_PKEY_CTX *int_ctx_new(OPENSSL_CTX *libctx,
     return ret;
 }
 
-/*- All methods below can also be used in FIPS_MODE */
+/*- All methods below can also be used in FIPS_MODULE */
 
 EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_name(OPENSSL_CTX *libctx,
                                          const char *name,
@@ -294,7 +296,7 @@ void evp_pkey_ctx_free_old_ops(EVP_PKEY_CTX *ctx)
         ctx->op.kex.exchange = NULL;
     }
 /* TODO(3.0): add dependancies and uncomment this when available for fips mode */
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
     else if (EVP_PKEY_CTX_IS_ASYM_CIPHER_OP(ctx)) {
         if (ctx->op.ciph.ciphprovctx != NULL && ctx->op.ciph.cipher != NULL)
             ctx->op.ciph.cipher->freectx(ctx->op.ciph.ciphprovctx);
@@ -320,13 +322,13 @@ void EVP_PKEY_CTX_free(EVP_PKEY_CTX *ctx)
 
     EVP_PKEY_free(ctx->pkey);
     EVP_PKEY_free(ctx->peerkey);
-#if !defined(OPENSSL_NO_ENGINE) && !defined(FIPS_MODE)
+#if !defined(OPENSSL_NO_ENGINE) && !defined(FIPS_MODULE)
     ENGINE_finish(ctx->engine);
 #endif
     OPENSSL_free(ctx);
 }
 
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
 
 void EVP_PKEY_meth_get0_info(int *ppkey_id, int *pflags,
                              const EVP_PKEY_METHOD *meth)
@@ -590,7 +592,7 @@ int EVP_PKEY_CTX_set_params(EVP_PKEY_CTX *ctx, OSSL_PARAM *params)
     return 0;
 }
 
-#ifndef FIPS_MODE
+#ifndef FIPS_MODULE
 int EVP_PKEY_CTX_get_params(EVP_PKEY_CTX *ctx, OSSL_PARAM *params)
 {
     if (EVP_PKEY_CTX_IS_DERIVE_OP(ctx)
@@ -624,12 +626,10 @@ const OSSL_PARAM *EVP_PKEY_CTX_gettable_params(EVP_PKEY_CTX *ctx)
             && ctx->op.sig.signature != NULL
             && ctx->op.sig.signature->gettable_ctx_params != NULL)
         return ctx->op.sig.signature->gettable_ctx_params();
-
     if (EVP_PKEY_CTX_IS_ASYM_CIPHER_OP(ctx)
             && ctx->op.ciph.cipher != NULL
             && ctx->op.ciph.cipher->gettable_ctx_params != NULL)
         return ctx->op.ciph.cipher->gettable_ctx_params();
-
     return NULL;
 }
 
@@ -648,8 +648,7 @@ const OSSL_PARAM *EVP_PKEY_CTX_settable_params(EVP_PKEY_CTX *ctx)
             && ctx->op.ciph.cipher->settable_ctx_params != NULL)
         return ctx->op.ciph.cipher->settable_ctx_params();
     if (EVP_PKEY_CTX_IS_GEN_OP(ctx)
-            && ctx->keymgmt != NULL
-            && ctx->keymgmt->gen_settable_params != NULL)
+            && ctx->keymgmt != NULL)
         return evp_keymgmt_gen_settable_params(ctx->keymgmt);
 
     return NULL;
@@ -662,7 +661,7 @@ const OSSL_PARAM *EVP_PKEY_CTX_settable_params(EVP_PKEY_CTX *ctx)
  *
  * In particular they return -2 if any of the params is not supported.
  *
- * They are not available in FIPS_MODE as they depend on
+ * They are not available in FIPS_MODULE as they depend on
  *      - EVP_PKEY_CTX_{get,set}_params()
  *      - EVP_PKEY_CTX_{gettable,settable}_params()
  *
@@ -803,17 +802,42 @@ static int legacy_ctrl_to_param(EVP_PKEY_CTX *ctx, int keytype, int optype,
      */
     if (cmd == EVP_PKEY_CTRL_CIPHER)
         return -2;
+
 # ifndef OPENSSL_NO_DH
     if (keytype == EVP_PKEY_DH) {
         switch (cmd) {
             case EVP_PKEY_CTRL_DH_PAD:
                 return EVP_PKEY_CTX_set_dh_pad(ctx, p1);
+            case EVP_PKEY_CTRL_DH_PARAMGEN_PRIME_LEN:
+                return EVP_PKEY_CTX_set_dh_paramgen_prime_len(ctx, p1);
+            case EVP_PKEY_CTRL_DH_PARAMGEN_SUBPRIME_LEN:
+                return EVP_PKEY_CTX_set_dh_paramgen_subprime_len(ctx, p1);
+            case EVP_PKEY_CTRL_DH_PARAMGEN_GENERATOR:
+                return EVP_PKEY_CTX_set_dh_paramgen_generator(ctx, p1);
+            case EVP_PKEY_CTRL_DH_PARAMGEN_TYPE:
+                return EVP_PKEY_CTX_set_dh_paramgen_type(ctx, p1);
+            case EVP_PKEY_CTRL_DH_RFC5114:
+                return EVP_PKEY_CTX_set_dh_rfc5114(ctx, p1);
+        }
+    }
+# endif
+# ifndef OPENSSL_NO_DSA
+    if (keytype == EVP_PKEY_DSA) {
+        switch (cmd) {
+        case EVP_PKEY_CTRL_DSA_PARAMGEN_BITS:
+            return EVP_PKEY_CTX_set_dsa_paramgen_bits(ctx, p1);
+        case EVP_PKEY_CTRL_DSA_PARAMGEN_Q_BITS:
+            return EVP_PKEY_CTX_set_dsa_paramgen_q_bits(ctx, p1);
+        case EVP_PKEY_CTRL_DSA_PARAMGEN_MD:
+            return EVP_PKEY_CTX_set_dsa_paramgen_md(ctx, p2);
         }
     }
 # endif
 # ifndef OPENSSL_NO_EC
     if (keytype == EVP_PKEY_EC) {
         switch (cmd) {
+        case EVP_PKEY_CTRL_EC_PARAMGEN_CURVE_NID:
+            return EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx, p1);
         case EVP_PKEY_CTRL_EC_ECDH_COFACTOR:
             if (p1 == -2) {
                 return EVP_PKEY_CTX_get_ecdh_cofactor_mode(ctx);
@@ -959,6 +983,24 @@ int EVP_PKEY_CTX_ctrl_uint64(EVP_PKEY_CTX *ctx, int keytype, int optype,
 static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
                                     const char *value)
 {
+
+    /* Special cases that we intercept */
+# ifndef OPENSSL_NO_EC
+    /*
+     * We don't support encoding settings for providers, i.e. the only
+     * possible encoding is "named_curve", so we simply fail when something
+     * else is given, and otherwise just pretend all is fine.
+     */
+    if (strcmp(name, "ec_param_enc") == 0) {
+        if (strcmp(value, "named_curve") == 0) {
+            return 1;
+        } else {
+            ERR_raise(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED);
+            return -2;
+        }
+    }
+# endif
+
     if (strcmp(name, "rsa_padding_mode") == 0)
         name = OSSL_ASYM_CIPHER_PARAM_PAD_MODE;
     else if (strcmp(name, "rsa_mgf1_md") == 0)
@@ -975,11 +1017,41 @@ static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
         name = OSSL_PKEY_PARAM_RSA_E;
     else if (strcmp(name, "rsa_keygen_primes") == 0)
         name = OSSL_PKEY_PARAM_RSA_PRIMES;
+    else if (strcmp(name, "rsa_pss_keygen_md") == 0)
+        name = OSSL_PKEY_PARAM_RSA_DIGEST;
+    else if (strcmp(name, "rsa_pss_keygen_mgf1_md") == 0)
+        name = OSSL_PKEY_PARAM_RSA_MGF1_DIGEST;
+    else if (strcmp(name, "rsa_pss_keygen_saltlen") == 0)
+        name = OSSL_PKEY_PARAM_RSA_PSS_SALTLEN;
+# ifndef OPENSSL_NO_DSA
+    else if (strcmp(name, "dsa_paramgen_bits") == 0)
+        name = OSSL_PKEY_PARAM_FFC_PBITS;
+    else if (strcmp(name, "dsa_paramgen_q_bits") == 0)
+        name = OSSL_PKEY_PARAM_FFC_QBITS;
+    else if (strcmp(name, "dsa_paramgen_md") == 0)
+        name = OSSL_PKEY_PARAM_FFC_DIGEST;
+# endif
 # ifndef OPENSSL_NO_DH
-    else if (strcmp(name, "dh_pad") == 0)
+    else if (strcmp(name, "dh_paramgen_generator") == 0)
+        name = OSSL_PKEY_PARAM_FFC_GENERATOR;
+    else if (strcmp(name, "dh_paramgen_prime_len") == 0)
+        name = OSSL_PKEY_PARAM_FFC_PBITS;
+    else if (strcmp(name, "dh_paramgen_subprime_len") == 0)
+        name = OSSL_PKEY_PARAM_FFC_QBITS;
+    else if (strcmp(name, "dh_paramgen_type") == 0) {
+        name = OSSL_PKEY_PARAM_FFC_TYPE;
+        value = dh_gen_type_id2name(atoi(value));
+    } else if (strcmp(name, "dh_param") == 0)
+        name = OSSL_PKEY_PARAM_FFC_GROUP;
+    else if (strcmp(name, "dh_rfc5114") == 0) {
+        name = OSSL_PKEY_PARAM_FFC_GROUP;
+        value = ffc_named_group_from_uid(atoi(value));
+    } else if (strcmp(name, "dh_pad") == 0)
         name = OSSL_EXCHANGE_PARAM_PAD;
 # endif
 # ifndef OPENSSL_NO_EC
+    else if (strcmp(name, "ec_paramgen_curve") == 0)
+        name = OSSL_PKEY_PARAM_EC_NAME;
     else if (strcmp(name, "ecdh_cofactor_mode") == 0)
         name = OSSL_EXCHANGE_PARAM_EC_ECDH_COFACTOR_MODE;
     else if (strcmp(name, "ecdh_kdf_md") == 0)
@@ -1000,7 +1072,8 @@ static int legacy_ctrl_str_to_param(EVP_PKEY_CTX *ctx, const char *name,
         if (!OSSL_PARAM_allocate_from_text(&params[0], settable, name, value,
                                            strlen(value), &exists)) {
             if (!exists) {
-                ERR_raise(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED);
+                ERR_raise_data(ERR_LIB_EVP, EVP_R_COMMAND_NOT_SUPPORTED,
+                               "name=%s,value=%s", name, value);
                 return -2;
             }
             return 0;
@@ -1517,4 +1590,4 @@ void EVP_PKEY_meth_get_digest_custom(EVP_PKEY_METHOD *pmeth,
         *pdigest_custom = pmeth->digest_custom;
 }
 
-#endif /* FIPS_MODE */
+#endif /* FIPS_MODULE */

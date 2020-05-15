@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -33,6 +33,15 @@
 #include "prov/providercommon.h"
 #include "prov/provider_util.h"
 #include "self_test.h"
+
+/*
+ * Forward declarations to ensure that interface functions are correctly
+ * defined.
+ */
+static OSSL_provider_teardown_fn fips_teardown;
+static OSSL_provider_gettable_params_fn fips_gettable_params;
+static OSSL_provider_get_params_fn fips_get_params;
+static OSSL_provider_query_operation_fn fips_query;
 
 #define ALGC(NAMES, FUNC, CHECK) { { NAMES, "provider=fips,fips=yes", FUNC }, CHECK }
 #define ALG(NAMES, FUNC) ALGC(NAMES, FUNC, NULL)
@@ -127,9 +136,8 @@ static OSSL_PARAM core_params[] =
 };
 
 /* TODO(3.0): To be removed */
-static int dummy_evp_call(void *provctx)
+static int dummy_evp_call(OPENSSL_CTX *libctx)
 {
-    OPENSSL_CTX *libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
     EVP_MD_CTX *ctx = EVP_MD_CTX_new();
     EVP_MD *sha256 = EVP_MD_fetch(libctx, "SHA256", NULL);
     EVP_KDF *kdf = EVP_KDF_fetch(libctx, OSSL_KDF_NAME_PBKDF2, NULL);
@@ -208,12 +216,12 @@ static int dummy_evp_call(void *provctx)
     return ret;
 }
 
-static const OSSL_PARAM *fips_gettable_params(const OSSL_PROVIDER *prov)
+static const OSSL_PARAM *fips_gettable_params(void *provctx)
 {
     return fips_param_types;
 }
 
-static int fips_get_params(const OSSL_PROVIDER *prov, OSSL_PARAM params[])
+static int fips_get_params(void *provctx, OSSL_PARAM params[])
 {
     OSSL_PARAM *p;
 
@@ -233,7 +241,7 @@ static int fips_get_params(const OSSL_PROVIDER *prov, OSSL_PARAM params[])
 /* FIPS specific version of the function of the same name in provlib.c */
 const char *ossl_prov_util_nid_to_name(int nid)
 {
-    /* We don't have OBJ_nid2n() in FIPS_MODE so we have an explicit list */
+    /* We don't have OBJ_nid2n() in FIPS_MODULE so we have an explicit list */
 
     switch (nid) {
     /* Digests */
@@ -367,13 +375,9 @@ static const OSSL_ALGORITHM fips_digests[] = {
     { "SHA3-256", "provider=fips,fips=yes", sha3_256_functions },
     { "SHA3-384", "provider=fips,fips=yes", sha3_384_functions },
     { "SHA3-512", "provider=fips,fips=yes", sha3_512_functions },
-    /*
-     * KECCAK-KMAC-128 and KECCAK-KMAC-256 as hashes are mostly useful for
-     * KMAC128 and KMAC256.
-     */
-    { "KECCAK-KMAC-128:KECCAK-KMAC128", "provider=fips,fips=yes", keccak_kmac_128_functions },
-    { "KECCAK-KMAC-256:KECCAK-KMAC256", "provider=fips,fips=yes", keccak_kmac_256_functions },
 
+    /* Non-FIPS algorithm to support oneshot_hash in the Ed448 code */
+    { "SHAKE-256:SHAKE256", "provider=fips,fips=no", shake_256_functions },
     { NULL, NULL, NULL }
 };
 
@@ -422,13 +426,8 @@ static const OSSL_ALGORITHM_CAPABLE fips_ciphers[] = {
 static OSSL_ALGORITHM exported_fips_ciphers[OSSL_NELEM(fips_ciphers)];
 
 static const OSSL_ALGORITHM fips_macs[] = {
-#ifndef OPENSSL_NO_CMAC
-    { "CMAC", "provider=fips,fips=yes", cmac_functions },
-#endif
     { "GMAC", "provider=fips,fips=yes", gmac_functions },
     { "HMAC", "provider=fips,fips=yes", hmac_functions },
-    { "KMAC-128:KMAC128", "provider=fips,fips=yes", kmac128_functions },
-    { "KMAC-256:KMAC256", "provider=fips,fips=yes", kmac256_functions },
     { NULL, NULL, NULL }
 };
 
@@ -437,7 +436,6 @@ static const OSSL_ALGORITHM fips_kdfs[] = {
     { "SSKDF", "provider=fips,fips=yes", kdf_sskdf_functions },
     { "PBKDF2", "provider=fips,fips=yes", kdf_pbkdf2_functions },
     { "TLS1-PRF", "provider=fips,fips=yes", kdf_tls1_prf_functions },
-    { "KBKDF", "provider=fips,fips=yes", kdf_kbkdf_functions },
     { NULL, NULL, NULL }
 };
 
@@ -447,6 +445,8 @@ static const OSSL_ALGORITHM fips_keyexch[] = {
 #endif
 #ifndef OPENSSL_NO_EC
     { "ECDH", "provider=fips,fips=yes", ecdh_keyexch_functions },
+    { "X25519", "provider=fips,fips=no", x25519_keyexch_functions },
+    { "X448", "provider=fips,fips=no", x448_keyexch_functions },
 #endif
     { NULL, NULL, NULL }
 };
@@ -457,6 +457,8 @@ static const OSSL_ALGORITHM fips_signature[] = {
 #endif
     { "RSA:rsaEncryption", "provider=fips,fips=yes", rsa_signature_functions },
 #ifndef OPENSSL_NO_EC
+    { "ED25519", "provider=fips,fips=no", ed25519_signature_functions },
+    { "ED448", "provider=fips,fips=no", ed448_signature_functions },
     { "ECDSA", "provider=fips,fips=yes", ecdsa_signature_functions },
 #endif
     { NULL, NULL, NULL }
@@ -475,15 +477,19 @@ static const OSSL_ALGORITHM fips_keymgmt[] = {
     { "DSA", "provider=fips,fips=yes", dsa_keymgmt_functions },
 #endif
     { "RSA:rsaEncryption", "provider=fips,fips=yes", rsa_keymgmt_functions },
+    { "RSA-PSS:RSASSA-PSS", "provider=default", rsapss_keymgmt_functions },
 #ifndef OPENSSL_NO_EC
     { "EC:id-ecPublicKey", "provider=fips,fips=yes", ec_keymgmt_functions },
+    { "X25519", "provider=fips,fips=no", x25519_keymgmt_functions },
+    { "X448", "provider=fips,fips=no", x448_keymgmt_functions },
+    { "ED25519", "provider=fips,fips=no", ed25519_keymgmt_functions },
+    { "ED448", "provider=fips,fips=no", ed448_keymgmt_functions },
 #endif
     { NULL, NULL, NULL }
 };
 
-static const OSSL_ALGORITHM *fips_query(OSSL_PROVIDER *prov,
-                                         int operation_id,
-                                         int *no_cache)
+static const OSSL_ALGORITHM *fips_query(void *provctx, int operation_id,
+                                        int *no_cache)
 {
     *no_cache = 0;
     switch (operation_id) {
@@ -508,13 +514,24 @@ static const OSSL_ALGORITHM *fips_query(OSSL_PROVIDER *prov,
     return NULL;
 }
 
+static void fips_teardown(void *provctx)
+{
+    OPENSSL_CTX_free(PROV_LIBRARY_CONTEXT_OF(provctx));
+    PROV_CTX_free(provctx);
+}
+
+static void fips_intern_teardown(void *provctx)
+{
+    /*
+     * We know that the library context is the same as for the outer provider,
+     * so no need to destroy it here.
+     */
+    PROV_CTX_free(provctx);
+}
+
 /* Functions we provide to the core */
 static const OSSL_DISPATCH fips_dispatch_table[] = {
-    /*
-     * To release our resources we just need to free the OPENSSL_CTX so we just
-     * use OPENSSL_CTX_free directly as our teardown function
-     */
-    { OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))OPENSSL_CTX_free },
+    { OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))fips_teardown },
     { OSSL_FUNC_PROVIDER_GETTABLE_PARAMS, (void (*)(void))fips_gettable_params },
     { OSSL_FUNC_PROVIDER_GET_PARAMS, (void (*)(void))fips_get_params },
     { OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))fips_query },
@@ -523,6 +540,7 @@ static const OSSL_DISPATCH fips_dispatch_table[] = {
 
 /* Functions we provide to ourself */
 static const OSSL_DISPATCH intern_dispatch_table[] = {
+    { OSSL_FUNC_PROVIDER_TEARDOWN, (void (*)(void))fips_intern_teardown },
     { OSSL_FUNC_PROVIDER_QUERY_OPERATION, (void (*)(void))fips_query },
     { 0, NULL }
 };
@@ -534,7 +552,7 @@ int OSSL_provider_init(const OSSL_PROVIDER *provider,
                        void **provctx)
 {
     FIPS_GLOBAL *fgbl;
-    OPENSSL_CTX *ctx;
+    OPENSSL_CTX *libctx = NULL;
     OSSL_self_test_cb_fn *stcbfn = NULL;
     OSSL_core_get_library_context_fn *c_get_libctx = NULL;
 
@@ -641,35 +659,43 @@ int OSSL_provider_init(const OSSL_PROVIDER *provider,
         return 0;
 
     /*  Create a context. */
-    if ((ctx = OPENSSL_CTX_new()) == NULL)
-        return 0;
-    if ((fgbl = openssl_ctx_get_data(ctx, OPENSSL_CTX_FIPS_PROV_INDEX,
-                                     &fips_prov_ossl_ctx_method)) == NULL) {
-        OPENSSL_CTX_free(ctx);
-        return 0;
+    if ((*provctx = PROV_CTX_new()) == NULL
+        || (libctx = OPENSSL_CTX_new()) == NULL) {
+        /*
+         * We free libctx separately here and only here because it hasn't
+         * been attached to *provctx.  All other error paths below rely
+         * solely on fips_teardown.
+         */
+        OPENSSL_CTX_free(libctx);
+        goto err;
     }
+    PROV_CTX_set0_library_context(*provctx, libctx);
+    PROV_CTX_set0_provider(*provctx, provider);
+
+    if ((fgbl = openssl_ctx_get_data(libctx, OPENSSL_CTX_FIPS_PROV_INDEX,
+                                     &fips_prov_ossl_ctx_method)) == NULL)
+        goto err;
 
     fgbl->prov = provider;
 
-    selftest_params.libctx = PROV_LIBRARY_CONTEXT_OF(ctx);
-    if (!SELF_TEST_post(&selftest_params, 0)) {
-        OPENSSL_CTX_free(ctx);
-        return 0;
-    }
+    selftest_params.libctx = libctx;
+    if (!SELF_TEST_post(&selftest_params, 0))
+        goto err;
 
     /*
      * TODO(3.0): Remove me. This is just a dummy call to demonstrate making
      * EVP calls from within the FIPS module.
      */
-    if (!dummy_evp_call(ctx)) {
-        OPENSSL_CTX_free(ctx);
-        return 0;
-    }
+    if (!dummy_evp_call(libctx))
+        goto err;
 
     *out = fips_dispatch_table;
-    *provctx = ctx;
 
     return 1;
+ err:
+    fips_teardown(*provctx);
+    *provctx = NULL;
+    return 0;
 }
 
 /*
@@ -700,14 +726,10 @@ int fips_intern_provider_init(const OSSL_PROVIDER *provider,
     if (c_get_libctx == NULL)
         return 0;
 
-    *provctx = c_get_libctx(provider);
-
-    /*
-     * Safety measure...  we should get the library context that was
-     * created up in OSSL_provider_init().
-     */
-    if (*provctx == NULL)
+    if ((*provctx = PROV_CTX_new()) == NULL)
         return 0;
+    PROV_CTX_set0_library_context(*provctx, c_get_libctx(provider));
+    PROV_CTX_set0_provider(*provctx, provider);
 
     *out = intern_dispatch_table;
     return 1;
@@ -752,9 +774,17 @@ int ERR_pop_to_mark(void)
     return c_pop_error_to_mark(NULL);
 }
 
-const OSSL_PROVIDER *FIPS_get_provider(OPENSSL_CTX *ctx)
+/*
+ * This must take a library context, since it's called from the depths
+ * of crypto/initthread.c code, where it's (correctly) assumed that the
+ * passed caller argument is an OPENSSL_CTX pointer (since the same routine
+ * is also called from other parts of libcrypto, which all pass around a
+ * OPENSSL_CTX pointer)
+ */
+const OSSL_PROVIDER *FIPS_get_provider(OPENSSL_CTX *libctx)
 {
-    FIPS_GLOBAL *fgbl = openssl_ctx_get_data(ctx, OPENSSL_CTX_FIPS_PROV_INDEX,
+    FIPS_GLOBAL *fgbl = openssl_ctx_get_data(libctx,
+                                             OPENSSL_CTX_FIPS_PROV_INDEX,
                                              &fips_prov_ossl_ctx_method);
 
     if (fgbl == NULL)

@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -94,6 +94,8 @@ extern "C" {
 #define OSSL_DIGEST_NAME_SHA2_256       "SHA2-256"
 #define OSSL_DIGEST_NAME_SHA2_384       "SHA2-384"
 #define OSSL_DIGEST_NAME_SHA2_512       "SHA2-512"
+#define OSSL_DIGEST_NAME_SHA2_512_224   "SHA2-512/224"
+#define OSSL_DIGEST_NAME_SHA2_512_256   "SHA2-512/256"
 #define OSSL_DIGEST_NAME_MD2            "MD2"
 #define OSSL_DIGEST_NAME_MD4            "MD4"
 #define OSSL_DIGEST_NAME_MDC2           "MDC2"
@@ -180,6 +182,7 @@ extern "C" {
 #define OSSL_PKEY_PARAM_DIGEST              OSSL_ALG_PARAM_DIGEST
 #define OSSL_PKEY_PARAM_PROPERTIES          OSSL_ALG_PARAM_PROPERTIES
 #define OSSL_PKEY_PARAM_DIGEST_SIZE         "digest-size"
+#define OSSL_PKEY_PARAM_MASKGENFUNC         "mgf"
 #define OSSL_PKEY_PARAM_MGF1_DIGEST         "mgf1-digest"
 #define OSSL_PKEY_PARAM_MGF1_PROPERTIES     "mgf1-properties"
 
@@ -191,6 +194,23 @@ extern "C" {
 #define OSSL_PKEY_PARAM_FFC_P        "p"
 #define OSSL_PKEY_PARAM_FFC_G        "g"
 #define OSSL_PKEY_PARAM_FFC_Q        "q"
+#define OSSL_PKEY_PARAM_FFC_GINDEX   "gindex"
+#define OSSL_PKEY_PARAM_FFC_PCOUNTER "pcounter"
+#define OSSL_PKEY_PARAM_FFC_SEED     "seed"
+#define OSSL_PKEY_PARAM_FFC_COFACTOR "j"
+#define OSSL_PKEY_PARAM_FFC_H        "hindex"
+#define OSSL_PKEY_PARAM_FFC_GROUP    "group"
+
+#define OSSL_PKEY_PARAM_FFC_GINDEX   "gindex"
+#define OSSL_PKEY_PARAM_FFC_PCOUNTER "pcounter"
+#define OSSL_PKEY_PARAM_FFC_SEED     "seed"
+#define OSSL_PKEY_PARAM_FFC_COFACTOR "j"
+#define OSSL_PKEY_PARAM_FFC_H        "hindex"
+
+/* Diffie-Hellman params */
+#define OSSL_PKEY_PARAM_FFC_GROUP    "group"
+#define OSSL_PKEY_PARAM_FFC_GENERATOR "safeprime-generator"
+#define OSSL_PKEY_PARAM_DH_PRIV_LEN   "priv_len"
 
 /* Elliptic Curve Domain Parameters */
 #define OSSL_PKEY_PARAM_EC_NAME      "curve-name"
@@ -252,8 +272,19 @@ extern "C" {
 
 
 /* Key generation parameters */
-#define OSSL_PKEY_PARAM_RSA_BITS        OSSL_PKEY_PARAM_BITS
-#define OSSL_PKEY_PARAM_RSA_PRIMES      "primes"
+#define OSSL_PKEY_PARAM_RSA_BITS            OSSL_PKEY_PARAM_BITS
+#define OSSL_PKEY_PARAM_RSA_PRIMES          "primes"
+#define OSSL_PKEY_PARAM_RSA_DIGEST          OSSL_PKEY_PARAM_DIGEST
+#define OSSL_PKEY_PARAM_RSA_MASKGENFUNC     OSSL_PKEY_PARAM_MASKGENFUNC
+#define OSSL_PKEY_PARAM_RSA_MGF1_DIGEST     OSSL_PKEY_PARAM_MGF1_DIGEST
+#define OSSL_PKEY_PARAM_RSA_PSS_SALTLEN     "saltlen"
+
+/* Key generation parameters */
+#define OSSL_PKEY_PARAM_FFC_TYPE         "type"
+#define OSSL_PKEY_PARAM_FFC_PBITS        "pbits"
+#define OSSL_PKEY_PARAM_FFC_QBITS        "qbits"
+#define OSSL_PKEY_PARAM_FFC_DIGEST       OSSL_PKEY_PARAM_DIGEST
+#define OSSL_PKEY_PARAM_FFC_DIGEST_PROPS OSSL_PKEY_PARAM_PROPERTIES
 
 /* Key Exchange parameters */
 
@@ -284,7 +315,7 @@ extern "C" {
 #define OSSL_SIGNATURE_PARAM_PAD_MODE           OSSL_PKEY_PARAM_PAD_MODE
 #define OSSL_SIGNATURE_PARAM_DIGEST             OSSL_PKEY_PARAM_DIGEST
 #define OSSL_SIGNATURE_PARAM_PROPERTIES         OSSL_PKEY_PARAM_PROPERTIES
-#define OSSL_SIGNATURE_PARAM_PSS_SALTLEN        "pss-saltlen"
+#define OSSL_SIGNATURE_PARAM_PSS_SALTLEN        "saltlen"
 #define OSSL_SIGNATURE_PARAM_MGF1_DIGEST        OSSL_PKEY_PARAM_MGF1_DIGEST
 #define OSSL_SIGNATURE_PARAM_MGF1_PROPERTIES    \
     OSSL_PKEY_PARAM_MGF1_PROPERTIES

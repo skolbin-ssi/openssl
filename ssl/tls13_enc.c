@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -436,11 +436,18 @@ static int derive_secret_key_and_iv(SSL *s, int sending, const EVP_MD *md,
         uint32_t algenc;
 
         ivlen = EVP_CCM_TLS_IV_LEN;
-        if (s->s3.tmp.new_cipher == NULL) {
+        if (s->s3.tmp.new_cipher != NULL) {
+            algenc = s->s3.tmp.new_cipher->algorithm_enc;
+        } else if (s->session->cipher != NULL) {
             /* We've not selected a cipher yet - we must be doing early data */
             algenc = s->session->cipher->algorithm_enc;
+        } else if (s->psksession != NULL && s->psksession->cipher != NULL) {
+            /* We must be doing early data with out-of-band PSK */
+            algenc = s->psksession->cipher->algorithm_enc;
         } else {
-            algenc = s->s3.tmp.new_cipher->algorithm_enc;
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_DERIVE_SECRET_KEY_AND_IV,
+                     ERR_R_EVP_LIB);
+            goto err;
         }
         if (algenc & (SSL_AES128CCM8 | SSL_AES256CCM8))
             taglen = EVP_CCM8_TLS_TAG_LEN;
@@ -608,6 +615,7 @@ int tls13_change_cipher_state(SSL *s, int which)
                 SSLfatal(s, SSL_AD_INTERNAL_ERROR,
                          SSL_F_TLS13_CHANGE_CIPHER_STATE,
                          SSL_R_ALGORITHM_FETCH_FAILED);
+                EVP_MD_CTX_free(mdctx);
                 goto err;
             }
 

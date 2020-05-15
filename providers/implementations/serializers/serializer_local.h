@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -14,6 +14,7 @@
 #include <openssl/x509.h>        /* X509_SIG */
 #include <openssl/types.h>
 #include <crypto/ecx.h>
+#include "internal/ffc.h"
 
 struct pkcs8_encrypt_ctx_st {
     /* Set to 1 if intending to encrypt/decrypt, otherwise 0 */
@@ -54,6 +55,7 @@ int ossl_prov_prepare_ec_params(const void *eckey, int nid,
 int ossl_prov_ec_pub_to_der(const void *eckey, unsigned char **pder);
 int ossl_prov_ec_priv_to_der(const void *eckey, unsigned char **pder);
 
+int ffc_params_prov_print(BIO *out, const FFC_PARAMS *ffc);
 int ossl_prov_prepare_dh_params(const void *dh, int nid,
                                 void **pstr, int *pstrtype);
 int ossl_prov_dh_pub_to_der(const void *dh, unsigned char **pder);
@@ -79,6 +81,14 @@ int ossl_prov_prepare_all_dsa_params(const void *dsa, int nid,
                                      void **pstr, int *pstrtype);
 int ossl_prov_dsa_pub_to_der(const void *dsa, unsigned char **pder);
 int ossl_prov_dsa_priv_to_der(const void *dsa, unsigned char **pder);
+
+/*
+ * ossl_prov_prepare_rsa_params() is designed to work with the ossl_prov_write_
+ * functions, hence 'void *rsa' rather than 'RSA *rsa'.
+ */
+int ossl_prov_prepare_rsa_params(const void *rsa, int nid,
+                                 void **pstr, int *pstrtype);
+int ossl_prov_rsa_type_to_evp(const RSA *rsa);
 
 int ossl_prov_print_labeled_bignum(BIO *out, const char *label,
                                    const BIGNUM *bn);

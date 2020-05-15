@@ -1,5 +1,5 @@
 /*-
- * Copyright 2007-2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -43,7 +43,7 @@ typedef struct ossl_crmf_encryptedvalue_st OSSL_CRMF_ENCRYPTEDVALUE;
 DECLARE_ASN1_FUNCTIONS(OSSL_CRMF_ENCRYPTEDVALUE)
 typedef struct ossl_crmf_msg_st OSSL_CRMF_MSG;
 DECLARE_ASN1_FUNCTIONS(OSSL_CRMF_MSG)
-DEFINE_STACK_OF(OSSL_CRMF_MSG)
+DEFINE_OR_DECLARE_STACK_OF(OSSL_CRMF_MSG)
 typedef struct ossl_crmf_attributetypeandvalue_st OSSL_CRMF_ATTRIBUTETYPEANDVALUE;
 typedef struct ossl_crmf_pbmparameter_st OSSL_CRMF_PBMPARAMETER;
 DECLARE_ASN1_FUNCTIONS(OSSL_CRMF_PBMPARAMETER)
@@ -51,7 +51,7 @@ typedef struct ossl_crmf_poposigningkey_st OSSL_CRMF_POPOSIGNINGKEY;
 typedef struct ossl_crmf_certrequest_st OSSL_CRMF_CERTREQUEST;
 typedef struct ossl_crmf_certid_st OSSL_CRMF_CERTID;
 DECLARE_ASN1_FUNCTIONS(OSSL_CRMF_CERTID)
-DEFINE_STACK_OF(OSSL_CRMF_CERTID)
+DEFINE_OR_DECLARE_STACK_OF(OSSL_CRMF_CERTID)
 
 typedef struct ossl_crmf_pkipublicationinfo_st OSSL_CRMF_PKIPUBLICATIONINFO;
 DECLARE_ASN1_FUNCTIONS(OSSL_CRMF_PKIPUBLICATIONINFO)

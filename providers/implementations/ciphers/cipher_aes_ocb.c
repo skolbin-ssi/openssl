@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -153,7 +153,7 @@ static int aes_ocb_block_update_internal(PROV_AES_OCB_CTX *ctx,
     size_t nextblocks;
     size_t outlint = 0;
 
-    if (bufsz != 0)
+    if (*bufsz != 0)
         nextblocks = fillblock(buf, bufsz, AES_BLOCK_SIZE, &in, &inl);
     else
         nextblocks = inl & ~(AES_BLOCK_SIZE-1);

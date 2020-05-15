@@ -10,6 +10,7 @@
 
 #ifndef OPENSSL_PROVERR_H
 # define OPENSSL_PROVERR_H
+# pragma once
 
 # include <openssl/opensslconf.h>
 # include <openssl/symhacks.h>
@@ -69,6 +70,7 @@ int ERR_load_PROV_strings(void);
 # define PROV_R_INAVLID_UKM_LENGTH                        146
 # define PROV_R_INVALID_AAD                               108
 # define PROV_R_INVALID_CONSTANT_LENGTH                   157
+# define PROV_R_INVALID_CURVE                             176
 # define PROV_R_INVALID_CUSTOM_LENGTH                     111
 # define PROV_R_INVALID_DATA                              115
 # define PROV_R_INVALID_DIGEST                            122
@@ -88,6 +90,7 @@ int ERR_load_PROV_strings(void);
 # define PROV_R_INVALID_PSS_SALTLEN                       169
 # define PROV_R_INVALID_SALT_LENGTH                       112
 # define PROV_R_INVALID_SEED_LENGTH                       154
+# define PROV_R_INVALID_SIGNATURE_SIZE                    179
 # define PROV_R_INVALID_TAG                               110
 # define PROV_R_INVALID_TAGLEN                            118
 # define PROV_R_INVALID_X931_DIGEST                       170
@@ -108,6 +111,8 @@ int ERR_load_PROV_strings(void);
 # define PROV_R_NOT_SUPPORTED                             136
 # define PROV_R_NOT_XOF_OR_INVALID_LENGTH                 113
 # define PROV_R_NO_KEY_SET                                114
+# define PROV_R_NO_PARAMETERS_SET                         177
+# define PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE  178
 # define PROV_R_OUTPUT_BUFFER_TOO_SMALL                   106
 # define PROV_R_PSS_SALTLEN_TOO_SMALL                     172
 # define PROV_R_READ_KEY                                  159

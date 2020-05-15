@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -369,7 +369,7 @@ static int evp_pkey_signature_init(EVP_PKEY_CTX *ctx, int operation)
     tmp_keymgmt = ctx->keymgmt;
     provkey = evp_pkey_export_to_provider(ctx->pkey, ctx->libctx,
                                           &tmp_keymgmt, ctx->propquery);
-    if (provkey == NULL)
+    if (tmp_keymgmt == NULL)
         goto legacy;
     if (!EVP_KEYMGMT_up_ref(tmp_keymgmt)) {
         ERR_clear_last_mark();
@@ -417,7 +417,8 @@ static int evp_pkey_signature_init(EVP_PKEY_CTX *ctx, int operation)
     /* No more legacy from here down to legacy: */
 
     ctx->op.sig.signature = signature;
-    ctx->op.sig.sigprovctx = signature->newctx(ossl_provider_ctx(signature->prov));
+    ctx->op.sig.sigprovctx =
+        signature->newctx(ossl_provider_ctx(signature->prov), ctx->propquery);
     if (ctx->op.sig.sigprovctx == NULL) {
         /* The provider key can stay in the cache */
         EVPerr(0, EVP_R_INITIALIZATION_ERROR);
@@ -503,6 +504,7 @@ static int evp_pkey_signature_init(EVP_PKEY_CTX *ctx, int operation)
     return ret;
 
  err:
+    evp_pkey_ctx_free_old_ops(ctx);
     ctx->operation = EVP_PKEY_OP_UNDEFINED;
     return ret;
 }

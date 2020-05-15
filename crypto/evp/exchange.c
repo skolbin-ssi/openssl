@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -264,6 +264,7 @@ int EVP_PKEY_derive_init(EVP_PKEY_CTX *ctx)
 
     return ret ? 1 : 0;
  err:
+    evp_pkey_ctx_free_old_ops(ctx);
     ctx->operation = EVP_PKEY_OP_UNDEFINED;
     return 0;
 
@@ -275,7 +276,7 @@ int EVP_PKEY_derive_init(EVP_PKEY_CTX *ctx)
      */
     ERR_pop_to_mark();
 
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
     return 0;
 #else
     if (ctx->pmeth == NULL || ctx->pmeth->derive == NULL) {
@@ -323,7 +324,7 @@ int EVP_PKEY_derive_set_peer(EVP_PKEY_CTX *ctx, EVP_PKEY *peer)
     return ctx->op.kex.exchange->set_peer(ctx->op.kex.exchprovctx, provkey);
 
  legacy:
-#ifdef FIPS_MODE
+#ifdef FIPS_MODULE
     return ret;
 #else
     /*

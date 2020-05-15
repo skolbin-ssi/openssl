@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -1539,6 +1539,8 @@ struct ssl_st {
 
         /* RFC4507 session ticket expected to be received or sent */
         int ticket_expected;
+        /* TLS 1.3 tickets requested by the application. */
+        int extra_tickets_expected;
 # ifndef OPENSSL_NO_EC
         size_t ecpointformats_len;
         /* our list */
@@ -1760,6 +1762,7 @@ typedef struct sigalg_lookup_st {
 
 typedef struct tls_group_info_st {
     int nid;                    /* Curve NID */
+    const char *keytype;
     int secbits;                /* Bits of security (from SP800-57) */
     uint32_t flags;             /* For group type and applicable TLS versions */
     uint16_t group_id;          /* Group ID */
@@ -2127,6 +2130,8 @@ typedef enum downgrade_en {
 #define TLSEXT_SIGALG_dsa_sha512                                0x0602
 #define TLSEXT_SIGALG_dsa_sha224                                0x0302
 #define TLSEXT_SIGALG_dsa_sha1                                  0x0202
+#define TLSEXT_SIGALG_gostr34102012_256_intrinsic               0x0840
+#define TLSEXT_SIGALG_gostr34102012_512_intrinsic               0x0841
 #define TLSEXT_SIGALG_gostr34102012_256_gostr34112012_256       0xeeee
 #define TLSEXT_SIGALG_gostr34102012_512_gostr34112012_512       0xefef
 #define TLSEXT_SIGALG_gostr34102001_gostr3411                   0xeded
@@ -2710,7 +2715,8 @@ __owur int ssl_log_secret(SSL *ssl, const char *label,
 
 /* s3_cbc.c */
 __owur char ssl3_cbc_record_digest_supported(const EVP_MD_CTX *ctx);
-__owur int ssl3_cbc_digest_record(const EVP_MD_CTX *ctx,
+__owur int ssl3_cbc_digest_record(SSL *s,
+                                  const EVP_MD_CTX *ctx,
                                   unsigned char *md_out,
                                   size_t *md_out_size,
                                   const unsigned char header[13],

@@ -164,7 +164,7 @@ send an HTTP request for an appropriate page.
 
 If a certificate is specified on the command line using the B<-cert>
 option it will not be used unless the server specifically requests
-a client certificate. Therefor merely including a client certificate
+a client certificate. Therefore merely including a client certificate
 on the command line is no guarantee that the certificate works.
 
 =head1 BUGS
@@ -190,7 +190,7 @@ L<ossl_store-file(7)>
 
 =head1 COPYRIGHT
 
-Copyright 2004-2019 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2004-2020 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

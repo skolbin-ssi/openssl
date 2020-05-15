@@ -1,5 +1,5 @@
 /*
- * Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -19,11 +19,11 @@
 #include <openssl/bn.h>
 #include <openssl/cms.h>
 #include <openssl/core_names.h>
+#include <openssl/param_build.h>
 #include "internal/cryptlib.h"
 #include "crypto/asn1.h"
 #include "crypto/dsa.h"
 #include "crypto/evp.h"
-#include "openssl/param_build.h"
 #include "internal/ffc.h"
 #include "dsa_local.h"
 
@@ -576,17 +576,18 @@ err:
     return rv;
 }
 
-static int dsa_pkey_import_from(const OSSL_PARAM params[], void *key)
+static int dsa_pkey_import_from(const OSSL_PARAM params[], void *vpctx)
 {
-    EVP_PKEY *pkey = key;
-    DSA *dsa = DSA_new();
+    EVP_PKEY_CTX *pctx = vpctx;
+    EVP_PKEY *pkey = EVP_PKEY_CTX_get0_pkey(pctx);
+    DSA *dsa = dsa_new_with_ctx(pctx->libctx);
 
     if (dsa == NULL) {
         ERR_raise(ERR_LIB_DSA, ERR_R_MALLOC_FAILURE);
         return 0;
     }
 
-    if (!ffc_fromdata(dsa_get0_params(dsa), params)
+    if (!dsa_ffc_params_fromdata(dsa, params)
         || !dsa_key_fromdata(dsa, params)
         || !EVP_PKEY_assign_DSA(pkey, dsa)) {
         DSA_free(dsa);

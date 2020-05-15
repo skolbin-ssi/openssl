@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -95,7 +95,16 @@ static int rsa_init(void *vprsactx, void *vrsa)
         return 0;
     RSA_free(prsactx->rsa);
     prsactx->rsa = vrsa;
-    prsactx->pad_mode = RSA_PKCS1_PADDING;
+
+    switch (RSA_test_flags(prsactx->rsa, RSA_FLAG_TYPE_MASK)) {
+    case RSA_FLAG_TYPE_RSA:
+        prsactx->pad_mode = RSA_PKCS1_PADDING;
+        break;
+    default:
+        ERR_raise(ERR_LIB_PROV, PROV_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+        return 0;
+    }
+
     return 1;
 }
 

@@ -43,9 +43,6 @@ B<openssl> B<dsa>
 
 =head1 DESCRIPTION
 
-This command has been deprecated.
-The L<openssl-pkey(1)> command should be used instead.
-
 This command processes DSA keys. They can be converted between various
 forms and their components printed out. B<Note> This command uses the
 traditional SSLeay compatible format for private key encryption: newer
@@ -162,13 +159,9 @@ L<openssl-gendsa(1)>,
 L<openssl-rsa(1)>,
 L<openssl-genrsa(1)>
 
-=head1 HISTORY
-
-This command was deprecated in OpenSSL 3.0.
-
 =head1 COPYRIGHT
 
-Copyright 2000-2019 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2000-2020 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

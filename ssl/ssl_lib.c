@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -25,6 +25,14 @@
 #include "internal/cryptlib.h"
 #include "internal/refcount.h"
 #include "internal/ktls.h"
+
+DEFINE_STACK_OF(X509)
+DEFINE_STACK_OF(X509_NAME)
+DEFINE_STACK_OF_CONST(SSL_CIPHER)
+DEFINE_STACK_OF(X509_EXTENSION)
+DEFINE_STACK_OF(OCSP_RESPID)
+DEFINE_STACK_OF(SRTP_PROTECTION_PROFILE)
+DEFINE_STACK_OF(SCT)
 
 static int ssl_undefined_function_1(SSL *ssl, SSL3_RECORD *r, size_t s, int t)
 {
@@ -2293,6 +2301,15 @@ int SSL_renegotiate_pending(const SSL *s)
      * handshake has finished
      */
     return (s->renegotiate != 0);
+}
+
+int SSL_new_session_ticket(SSL *s)
+{
+    if (SSL_in_init(s) || SSL_IS_FIRST_HANDSHAKE(s) || !s->server
+            || !SSL_IS_TLS13(s))
+        return 0;
+    s->ext.extra_tickets_expected++;
+    return 1;
 }
 
 long SSL_ctrl(SSL *s, int cmd, long larg, void *parg)

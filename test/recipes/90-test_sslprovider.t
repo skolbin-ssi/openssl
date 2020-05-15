@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2016-2018 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -23,15 +23,12 @@ plan skip_all => "No TLS/SSL protocols are supported by this OpenSSL build"
 
 plan tests => 3;
 
-$ENV{OPENSSL_MODULES} = bldtop_dir("providers");
-$ENV{OPENSSL_CONF_INCLUDE} = bldtop_dir("providers");
-
 SKIP: {
     skip "Skipping FIPS installation", 1
         if disabled("fips");
 
     ok(run(app(['openssl', 'fipsinstall',
-                '-out', bldtop_file('providers', 'fipsinstall.cnf'),
+                '-out', bldtop_file('providers', 'fipsmodule.cnf'),
                 '-module', bldtop_file('providers', platform->dso('fips')),
                 '-provider_name', 'fips', '-mac_name', 'HMAC',
                 '-macopt', 'digest:SHA256', '-macopt', 'hexkey:00',
