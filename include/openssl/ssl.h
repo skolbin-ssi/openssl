@@ -87,6 +87,7 @@ extern "C" {
 # define SSL_TXT_kECDHEPSK       "kECDHEPSK"
 # define SSL_TXT_kDHEPSK         "kDHEPSK"
 # define SSL_TXT_kGOST           "kGOST"
+# define SSL_TXT_kGOST18         "kGOST18"
 # define SSL_TXT_kSRP            "kSRP"
 
 # define SSL_TXT_aRSA            "aRSA"
@@ -324,14 +325,9 @@ typedef int (*SSL_async_callback_fn)(SSL *s, void *arg);
 /* Allow initial connection to servers that don't support RI */
 # define SSL_OP_LEGACY_SERVER_CONNECT                    0x00000004U
 
-/* Reserved value (until OpenSSL 3.0.0)                  0x00000008U */
 # define SSL_OP_TLSEXT_PADDING                           0x00000010U
-/* Reserved value (until OpenSSL 3.0.0)                  0x00000020U */
 # define SSL_OP_SAFARI_ECDHE_ECDSA_BUG                   0x00000040U
-/*
- * Reserved value (until OpenSSL 3.0.0)                  0x00000080U
- * Reserved value (until OpenSSL 3.0.0)                  0x00000100U
- */
+# define SSL_OP_IGNORE_UNEXPECTED_EOF                    0x00000080U
 
 # define SSL_OP_DISABLE_TLSEXT_CA_NAMES                  0x00000200U
 
@@ -933,6 +929,8 @@ __owur int SSL_extension_supported(unsigned int ext_type);
 
 # define SSL_MAC_FLAG_READ_MAC_STREAM 1
 # define SSL_MAC_FLAG_WRITE_MAC_STREAM 2
+# define SSL_MAC_FLAG_READ_MAC_TLSTREE 4
+# define SSL_MAC_FLAG_WRITE_MAC_TLSTREE 8
 
 /*
  * A callback for logging out TLS key material. This callback should log out
@@ -2027,9 +2025,9 @@ __owur int SSL_CTX_set_default_verify_store(SSL_CTX *ctx);
 __owur int SSL_CTX_load_verify_file(SSL_CTX *ctx, const char *CAfile);
 __owur int SSL_CTX_load_verify_dir(SSL_CTX *ctx, const char *CApath);
 __owur int SSL_CTX_load_verify_store(SSL_CTX *ctx, const char *CAstore);
-DEPRECATEDIN_3_0(__owur int SSL_CTX_load_verify_locations(SSL_CTX *ctx,
+__owur int SSL_CTX_load_verify_locations(SSL_CTX *ctx,
                                                         const char *CAfile,
-                                                        const char *CApath))
+                                                        const char *CApath);
 # define SSL_get0_session SSL_get_session/* just peek at pointer */
 __owur SSL_SESSION *SSL_get_session(const SSL *ssl);
 __owur SSL_SESSION *SSL_get1_session(SSL *ssl); /* obtain a reference count */

@@ -23,12 +23,45 @@ OpenSSL 3.0
 
 ### Changes between 1.1.1 and 3.0 [xx XXX xxxx]
 
+ * Add CAdES-BES signature verification support, mostly derived
+   from ESSCertIDv2 TS (RFC 5816) contribution by Marek Klein.
+
+   *Filipe Raimundo da Silva*
+
+ * Add CAdES-BES signature scheme and attributes support (RFC 5126) to CMS API.
+
+   *Antonio Iacono*
+
+ * Deprecated EC_POINT_make_affine() and EC_POINTs_make_affine(). These
+   functions are not widely used and now OpenSSL automatically perform this
+   conversion when needed.
+
+   *Billy Bob Brumley*
+
+ * Deprecated EC_GROUP_precompute_mult(), EC_GROUP_have_precompute_mult(), and
+   EC_KEY_precompute_mult(). These functions are not widely used and
+   applications should instead switch to named curves which OpenSSL has
+   hardcoded lookup tables for.
+
+   *Billy Bob Brumley*
+
+ * Deprecated EC_POINTs_mul(). This function is not widely used and applications
+   should instead use the L<EC_POINT_mul(3)> function.
+
+   *Billy Bob Brumley*
+
  * Removed FIPS_mode() and FIPS_mode_set(). These functions are legacy API's
    that are not applicable to the new provider model. Applications should
    instead use EVP_default_properties_is_fips_enabled() and
    EVP_default_properties_enable_fips().
 
    *Shane Lontis*
+
+ * The SSL option SSL_OP_IGNORE_UNEXPECTED_EOF is introduced. If that option
+   is set, an unexpected EOF is ignored, it pretends a close notify was received
+   instead and so the returned error becomes SSL_ERROR_ZERO_RETURN.
+
+   *Dmitry Belyavskiy*
 
  * Deprecated EC_POINT_set_Jprojective_coordinates_GFp() and
    EC_POINT_get_Jprojective_coordinates_GFp(). These functions are not widely
@@ -508,13 +541,6 @@ OpenSSL 3.0
    - SSL_CTX_load_verify_file()
    - SSL_CTX_load_verify_dir()
    - SSL_CTX_load_verify_store()
-
-   Also, the following functions are now deprecated:
-
-   - X509_STORE_load_locations() (use X509_STORE_load_file(),
-     X509_STORE_load_path() or X509_STORE_load_store() instead)
-   - SSL_CTX_load_verify_locations() (use SSL_CTX_load_verify_file(),
-     SSL_CTX_load_verify_dir() or SSL_CTX_load_verify_store() instead)
 
    *Richard Levitte*
 

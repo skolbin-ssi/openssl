@@ -55,13 +55,11 @@ static OSSL_OP_signature_set_ctx_md_params_fn rsa_set_ctx_md_params;
 static OSSL_OP_signature_settable_ctx_md_params_fn rsa_settable_ctx_md_params;
 
 static OSSL_ITEM padding_item[] = {
-    { RSA_PKCS1_PADDING,        "pkcs1"  },
-    { RSA_SSLV23_PADDING,       "sslv23" },
-    { RSA_NO_PADDING,           "none"   },
-    { RSA_PKCS1_OAEP_PADDING,   "oaep"   }, /* Correct spelling first */
-    { RSA_PKCS1_OAEP_PADDING,   "oeap"   },
-    { RSA_X931_PADDING,         "x931"   },
-    { RSA_PKCS1_PSS_PADDING,    "pss"    },
+    { RSA_PKCS1_PADDING,        OSSL_PKEY_RSA_PAD_MODE_PKCSV15 },
+    { RSA_SSLV23_PADDING,       OSSL_PKEY_RSA_PAD_MODE_SSLV23 },
+    { RSA_NO_PADDING,           OSSL_PKEY_RSA_PAD_MODE_NONE },
+    { RSA_X931_PADDING,         OSSL_PKEY_RSA_PAD_MODE_X931 },
+    { RSA_PKCS1_PSS_PADDING,    OSSL_PKEY_RSA_PAD_MODE_PSS },
     { 0,                        NULL     }
 };
 
@@ -227,17 +225,22 @@ static int rsa_setup_md(PROV_RSA_CTX *ctx, const char *mdname,
         EVP_MD *md = EVP_MD_fetch(ctx->libctx, mdname, mdprops);
         int md_nid = rsa_get_md_nid(md);
         WPACKET pkt;
+        size_t mdname_len = strlen(mdname);
 
         if (md == NULL
             || md_nid == NID_undef
             || !rsa_check_padding(md_nid, ctx->pad_mode)
-            || !rsa_check_parameters(md, ctx)) {
+            || !rsa_check_parameters(md, ctx)
+            || mdname_len >= sizeof(ctx->mdname)) {
             if (md == NULL)
                 ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
                                "%s could not be fetched", mdname);
             if (md_nid == NID_undef)
                 ERR_raise_data(ERR_LIB_PROV, PROV_R_DIGEST_NOT_ALLOWED,
                                "digest=%s", mdname);
+            if (mdname_len >= sizeof(ctx->mdname))
+                ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
+                               "%s exceeds name buffer length", mdname);
             EVP_MD_free(md);
             return 0;
         }
@@ -254,7 +257,8 @@ static int rsa_setup_md(PROV_RSA_CTX *ctx, const char *mdname,
          */
         ctx->aid_len = 0;
         if (WPACKET_init_der(&pkt, ctx->aid_buf, sizeof(ctx->aid_buf))
-            && DER_w_algorithmIdentifier_RSA_with(&pkt, -1, ctx->rsa, md_nid)
+            && DER_w_algorithmIdentifier_MDWithRSAEncryption(&pkt, -1, ctx->rsa,
+                                                             md_nid)
             && WPACKET_finish(&pkt)) {
             WPACKET_get_total_written(&pkt, &ctx->aid_len);
             ctx->aid = WPACKET_get_curr(&pkt);
@@ -273,6 +277,8 @@ static int rsa_setup_md(PROV_RSA_CTX *ctx, const char *mdname,
 static int rsa_setup_mgf1_md(PROV_RSA_CTX *ctx, const char *mdname,
                              const char *mdprops)
 {
+    size_t len;
+
     if (mdprops == NULL)
         mdprops = ctx->propq;
 
@@ -284,7 +290,12 @@ static int rsa_setup_mgf1_md(PROV_RSA_CTX *ctx, const char *mdname,
                        "%s could not be fetched", mdname);
         return 0;
     }
-    OPENSSL_strlcpy(ctx->mgf1_mdname, mdname, sizeof(ctx->mgf1_mdname));
+    len = OPENSSL_strlcpy(ctx->mgf1_mdname, mdname, sizeof(ctx->mgf1_mdname));
+    if (len >= sizeof(ctx->mgf1_mdname)) {
+        ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
+                       "%s exceeds name buffer length", mdname);
+        return 0;
+    }
 
     return 1;
 }
@@ -320,6 +331,7 @@ static int rsa_signature_init(void *vprsactx, void *vrsa, int operation)
                 int mgf1md_nid = rsa_pss_params_30_maskgenhashalg(pss);
                 int min_saltlen = rsa_pss_params_30_saltlen(pss);
                 const char *mdname, *mgf1mdname;
+                size_t len;
 
                 mdname = rsa_oaeppss_nid2name(md_nid);
                 mgf1mdname = rsa_oaeppss_nid2name(mgf1md_nid);
@@ -336,9 +348,20 @@ static int rsa_signature_init(void *vprsactx, void *vrsa, int operation)
                     return 0;
                 }
 
-                strncpy(prsactx->mdname, mdname, sizeof(prsactx->mdname));
-                strncpy(prsactx->mgf1_mdname, mgf1mdname,
-                        sizeof(prsactx->mgf1_mdname));
+                len = OPENSSL_strlcpy(prsactx->mdname, mdname,
+                                      sizeof(prsactx->mdname));
+                if (len >= sizeof(prsactx->mdname)) {
+                    ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
+                                   "hash algorithm name too long");
+                    return 0;
+                }
+                len = OPENSSL_strlcpy(prsactx->mgf1_mdname, mgf1mdname,
+                                      sizeof(prsactx->mgf1_mdname));
+                if (len >= sizeof(prsactx->mgf1_mdname)) {
+                    ERR_raise_data(ERR_LIB_PROV, PROV_R_INVALID_DIGEST,
+                                   "MGF1 hash algorithm name too long");
+                    return 0;
+                }
                 prsactx->saltlen = min_saltlen;
 
                 return rsa_setup_md(prsactx, mdname, prsactx->propq)
@@ -914,25 +937,32 @@ static int rsa_get_ctx_params(void *vprsactx, OSSL_PARAM *params)
             if (!OSSL_PARAM_set_int(p, prsactx->saltlen))
                 return 0;
         } else if (p->data_type == OSSL_PARAM_UTF8_STRING) {
+            const char *value = NULL;
+
             switch (prsactx->saltlen) {
             case RSA_PSS_SALTLEN_DIGEST:
-                if (!OSSL_PARAM_set_utf8_string(p, "digest"))
-                    return 0;
+                value = OSSL_PKEY_RSA_PSS_SALT_LEN_DIGEST;
                 break;
             case RSA_PSS_SALTLEN_MAX:
-                if (!OSSL_PARAM_set_utf8_string(p, "max"))
-                    return 0;
+                value = OSSL_PKEY_RSA_PSS_SALT_LEN_MAX;
                 break;
             case RSA_PSS_SALTLEN_AUTO:
-                if (!OSSL_PARAM_set_utf8_string(p, "auto"))
-                    return 0;
+                value = OSSL_PKEY_RSA_PSS_SALT_LEN_AUTO;
                 break;
             default:
-                if (BIO_snprintf(p->data, p->data_size, "%d", prsactx->saltlen)
-                    <= 0)
-                    return 0;
-                break;
+                {
+                    int len = BIO_snprintf(p->data, p->data_size, "%d",
+                                           prsactx->saltlen);
+
+                    if (len <= 0)
+                        return 0;
+                    p->return_size = len;
+                    break;
+                }
             }
+            if (value != NULL
+                && !OSSL_PARAM_set_utf8_string(p, value))
+                return 0;
         }
     }
 
@@ -1092,11 +1122,11 @@ static int rsa_set_ctx_params(void *vprsactx, const OSSL_PARAM params[])
                 return 0;
             break;
         case OSSL_PARAM_UTF8_STRING:
-            if (strcmp(p->data, "digest") == 0)
+            if (strcmp(p->data, OSSL_PKEY_RSA_PSS_SALT_LEN_DIGEST) == 0)
                 saltlen = RSA_PSS_SALTLEN_DIGEST;
-            else if (strcmp(p->data, "max") == 0)
+            else if (strcmp(p->data, OSSL_PKEY_RSA_PSS_SALT_LEN_MAX) == 0)
                 saltlen = RSA_PSS_SALTLEN_MAX;
-            else if (strcmp(p->data, "auto") == 0)
+            else if (strcmp(p->data, OSSL_PKEY_RSA_PSS_SALT_LEN_AUTO) == 0)
                 saltlen = RSA_PSS_SALTLEN_AUTO;
             else
                 saltlen = atoi(p->data);

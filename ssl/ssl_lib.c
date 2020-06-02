@@ -3495,11 +3495,11 @@ void ssl_set_masks(SSL *s)
 
 #ifndef OPENSSL_NO_GOST
     if (ssl_has_cert(s, SSL_PKEY_GOST12_512)) {
-        mask_k |= SSL_kGOST;
+        mask_k |= SSL_kGOST | SSL_kGOST18;
         mask_a |= SSL_aGOST12;
     }
     if (ssl_has_cert(s, SSL_PKEY_GOST12_256)) {
-        mask_k |= SSL_kGOST;
+        mask_k |= SSL_kGOST | SSL_kGOST18;
         mask_a |= SSL_aGOST12;
     }
     if (ssl_has_cert(s, SSL_PKEY_GOST01)) {
@@ -4339,7 +4339,6 @@ int SSL_CTX_load_verify_store(SSL_CTX *ctx, const char *CAstore)
     return X509_STORE_load_store(ctx->cert_store, CAstore);
 }
 
-#ifndef OPENSSL_NO_DEPRECATED_3_0
 int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
                                   const char *CApath)
 {
@@ -4351,7 +4350,6 @@ int SSL_CTX_load_verify_locations(SSL_CTX *ctx, const char *CAfile,
         return 0;
     return 1;
 }
-#endif
 
 void SSL_set_info_callback(SSL *ssl,
                            void (*cb) (const SSL *ssl, int type, int val))
