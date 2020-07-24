@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use some engine deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <stdio.h>
 #include <string.h>
 #include "apps.h"
@@ -189,9 +192,12 @@ int genpkey_main(int argc, char **argv)
         goto end;
     }
 
+    ret = 0;
+
     if (rv <= 0) {
         BIO_puts(bio_err, "Error writing key\n");
         ERR_print_errors(bio_err);
+        ret = 1;
     }
 
     if (text) {
@@ -203,10 +209,9 @@ int genpkey_main(int argc, char **argv)
         if (rv <= 0) {
             BIO_puts(bio_err, "Error printing key\n");
             ERR_print_errors(bio_err);
+            ret = 1;
         }
     }
-
-    ret = 0;
 
  end:
     EVP_PKEY_free(pkey);
@@ -275,7 +280,7 @@ int init_gen_str(EVP_PKEY_CTX **pctx,
 
     ameth = EVP_PKEY_asn1_find_str(&tmpeng, algname, -1);
 
-#ifndef OPENSSL_NO_ENGINE
+#if !defined(OPENSSL_NO_ENGINE) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     if (!ameth && e)
         ameth = ENGINE_get_pkey_asn1_meth_str(e, algname, -1);
 #endif
@@ -288,7 +293,7 @@ int init_gen_str(EVP_PKEY_CTX **pctx,
     ERR_clear_error();
 
     EVP_PKEY_asn1_get0_info(&pkey_id, NULL, NULL, NULL, NULL, ameth);
-#ifndef OPENSSL_NO_ENGINE
+#if !defined(OPENSSL_NO_ENGINE) && !defined(OPENSSL_NO_DEPRECATED_3_0)
     ENGINE_finish(tmpeng);
 #endif
     ctx = EVP_PKEY_CTX_new_id(pkey_id, e);

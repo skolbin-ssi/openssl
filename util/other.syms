@@ -35,10 +35,18 @@ EVP_MAC_CTX                             datatype
 EVP_PKEY_gen_cb                         datatype
 EVP_PKEY_METHOD                         datatype
 EVP_PKEY_ASN1_METHOD                    datatype
+EVP_RAND                                datatype
+EVP_RAND_CTX                            datatype
 GEN_SESSION_CB                          datatype
 OPENSSL_Applink                         external
 OPENSSL_CTX                             datatype
 NAMING_AUTHORITY                        datatype
+OSSL_DESERIALIZER                       datatype
+OSSL_DESERIALIZER_CTX                   datatype
+OSSL_DESERIALIZER_FINALIZER             datatype
+OSSL_DESERIALIZER_CLEANER               datatype
+OSSL_DESERIALIZER_INSTANCE              datatype
+OSSL_DESERIALIZER_CTX                   datatype
 OSSL_HTTP_bio_cb_t                      datatype
 OSSL_PARAM                              datatype
 OSSL_PROVIDER                           datatype
@@ -300,6 +308,9 @@ EVP_PKEY_assign_EC_KEY                  define
 EVP_PKEY_assign_POLY1305                define
 EVP_PKEY_assign_RSA                     define
 EVP_PKEY_assign_SIPHASH                 define
+EVP_RAND_STATE_ERROR                    define
+EVP_RAND_STATE_READY                    define
+EVP_RAND_STATE_UNINITIALISED            define
 EVP_SealUpdate                          define
 EVP_SignInit                            define
 EVP_SignInit_ex                         define
@@ -500,6 +511,7 @@ SSL_get_max_cert_list                   define
 SSL_get_max_proto_version               define
 SSL_get_min_proto_version               define
 SSL_get_mode                            define
+SSL_get_peer_certificate                define deprecated 3.0.0
 SSL_get_peer_signature_nid              define
 SSL_get_peer_tmp_key                    define
 SSL_get_secure_renegotiation_support    define
@@ -565,8 +577,11 @@ X509_CRL_http_nbio                      define
 X509_http_nbio                          define
 X509_LOOKUP_add_dir                     define
 X509_LOOKUP_add_store                   define
+X509_LOOKUP_add_store_with_libctx       define
 X509_LOOKUP_load_file                   define
+X509_LOOKUP_load_file_with_libctx       define
 X509_LOOKUP_load_store                  define
+X509_LOOKUP_load_store_with_libctx      define
 X509_STORE_set_lookup_crls_cb           define
 X509_STORE_set_verify_func              define
 EVP_PKEY_CTX_set1_id                    define

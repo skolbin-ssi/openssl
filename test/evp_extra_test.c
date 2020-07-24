@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use some deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -471,6 +474,35 @@ static EVP_PKEY *load_example_hmac_key(void)
     return pkey;
 }
 
+static int test_EVP_set_default_properties(void)
+{
+    OPENSSL_CTX *ctx;
+    EVP_MD *md = NULL;
+    int res = 0;
+
+    if (!TEST_ptr(ctx = OPENSSL_CTX_new())
+            || !TEST_ptr(md = EVP_MD_fetch(ctx, "sha256", NULL)))
+        goto err;
+    EVP_MD_free(md);
+    md = NULL;
+
+    if (!TEST_true(EVP_set_default_properties(ctx, "provider=fizzbang"))
+            || !TEST_ptr_null(md = EVP_MD_fetch(ctx, "sha256", NULL))
+            || !TEST_ptr(md = EVP_MD_fetch(ctx, "sha256", "-provider")))
+        goto err;
+    EVP_MD_free(md);
+    md = NULL;
+
+    if (!TEST_true(EVP_set_default_properties(ctx, NULL))
+            || !TEST_ptr(md = EVP_MD_fetch(ctx, "sha256", NULL)))
+        goto err;
+    res = 1;
+err:
+    EVP_MD_free(md);
+    OPENSSL_CTX_free(ctx);
+    return res;
+}
+
 static int test_EVP_Enveloped(void)
 {
     int ret = 0;
@@ -766,6 +798,40 @@ static int test_EVP_PKCS82PKEY(void)
     return ret;
 }
 #endif
+
+/* This uses kExampleRSAKeyDER and kExampleRSAKeyPKCS8 to verify encoding */
+static int test_privatekey_to_pkcs8(void)
+{
+    EVP_PKEY *pkey = NULL;
+    BIO *membio = NULL;
+    char *membuf = NULL;
+    long membuf_len = 0;
+    int ok = 0;
+
+    if (!TEST_ptr(membio = BIO_new(BIO_s_mem()))
+        || !TEST_ptr(pkey = load_example_rsa_key())
+        || !TEST_int_gt(i2d_PKCS8PrivateKey_bio(membio, pkey, NULL,
+                                                NULL, 0, NULL, NULL),
+                        0)
+        || !TEST_int_gt(membuf_len = BIO_get_mem_data(membio, &membuf), 0)
+        || !TEST_ptr(membuf)
+        || !TEST_mem_eq(membuf, (size_t)membuf_len,
+                        kExampleRSAKeyPKCS8, sizeof(kExampleRSAKeyPKCS8))
+        /*
+         * We try to write PEM as well, just to see that it doesn't err, but
+         * assume that the result is correct.
+         */
+        || !TEST_int_gt(PEM_write_bio_PKCS8PrivateKey(membio, pkey, NULL,
+                                                      NULL, 0, NULL, NULL),
+                        0))
+        goto done;
+
+    ok = 1;
+ done:
+    EVP_PKEY_free(pkey);
+    BIO_free_all(membio);
+    return ok;
+}
 
 #if !defined(OPENSSL_NO_SM2) && !defined(FIPS_MODULE)
 
@@ -1077,6 +1143,7 @@ static int test_set_get_raw_keys(int tst)
            && test_set_get_raw_keys_int(tst, 1, 1);
 }
 
+#ifndef OPENSSL_NO_DEPRECATED_3_0
 static int pkey_custom_check(EVP_PKEY *pkey)
 {
     return 0xbeef;
@@ -1093,6 +1160,7 @@ static int pkey_custom_param_check(EVP_PKEY *pkey)
 }
 
 static EVP_PKEY_METHOD *custom_pmeth;
+#endif
 
 static int test_EVP_PKEY_check(int i)
 {
@@ -1103,7 +1171,9 @@ static int test_EVP_PKEY_check(int i)
     EC_KEY *eckey = NULL;
 #endif
     EVP_PKEY_CTX *ctx = NULL;
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     EVP_PKEY_CTX *ctx2 = NULL;
+#endif
     const APK_DATA *ak = &keycheckdata[i];
     const unsigned char *input = ak->kder;
     size_t input_len = ak->size;
@@ -1155,6 +1225,7 @@ static int test_EVP_PKEY_check(int i)
     if (!TEST_int_eq(EVP_PKEY_param_check(ctx), expected_param_check))
         goto done;
 
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     ctx2 = EVP_PKEY_CTX_new_id(0xdefaced, NULL);
     /* assign the pkey directly, as an internal test */
     EVP_PKEY_up_ref(pkey);
@@ -1168,12 +1239,15 @@ static int test_EVP_PKEY_check(int i)
 
     if (!TEST_int_eq(EVP_PKEY_param_check(ctx2), 0xbeef))
         goto done;
+#endif
 
     ret = 1;
 
  done:
     EVP_PKEY_CTX_free(ctx);
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     EVP_PKEY_CTX_free(ctx2);
+#endif
     EVP_PKEY_free(pkey);
     BIO_free(pubkey);
     return ret;
@@ -1707,6 +1781,37 @@ static int test_pkey_ctx_fail_without_provider(int tst)
     return ret;
 }
 
+static int test_rand_agglomeration(void)
+{
+    EVP_RAND *rand;
+    EVP_RAND_CTX *ctx;
+    OSSL_PARAM params[3], *p = params;
+    int res;
+    unsigned int step = 7;
+    static unsigned char seed[] = "It does not matter how slowly you go "
+                                  "as long as you do not stop.";
+    unsigned char out[sizeof(seed)];
+
+    if (!TEST_int_ne(sizeof(seed) % step, 0)
+            || !TEST_ptr(rand = EVP_RAND_fetch(NULL, "TEST-RAND", NULL)))
+        return 0;
+    ctx = EVP_RAND_CTX_new(rand, NULL);
+    EVP_RAND_free(rand);
+    if (!TEST_ptr(ctx))
+        return 0;
+
+    memset(out, 0, sizeof(out));
+    *p++ = OSSL_PARAM_construct_octet_string(OSSL_RAND_PARAM_TEST_ENTROPY,
+                                             seed, sizeof(seed));
+    *p++ = OSSL_PARAM_construct_uint(OSSL_DRBG_PARAM_MAX_REQUEST, &step);
+    *p = OSSL_PARAM_construct_end();
+    res = TEST_true(EVP_RAND_set_ctx_params(ctx, params))
+          && TEST_true(EVP_RAND_generate(ctx, out, sizeof(out), 0, 1, NULL, 0))
+          && TEST_mem_eq(seed, sizeof(seed), out, sizeof(out));
+    EVP_RAND_CTX_free(ctx);
+    return res;
+}
+
 int setup_tests(void)
 {
     testctx = OPENSSL_CTX_new();
@@ -1714,10 +1819,12 @@ int setup_tests(void)
     if (!TEST_ptr(testctx))
         return 0;
 
+    ADD_TEST(test_EVP_set_default_properties);
     ADD_ALL_TESTS(test_EVP_DigestSignInit, 9);
     ADD_TEST(test_EVP_DigestVerifyInit);
     ADD_TEST(test_EVP_Enveloped);
     ADD_ALL_TESTS(test_d2i_AutoPrivateKey, OSSL_NELEM(keydata));
+    ADD_TEST(test_privatekey_to_pkcs8);
 #ifndef OPENSSL_NO_EC
     ADD_TEST(test_EVP_PKCS82PKEY);
 #endif
@@ -1726,6 +1833,7 @@ int setup_tests(void)
     ADD_TEST(test_EVP_SM2_verify);
 #endif
     ADD_ALL_TESTS(test_set_get_raw_keys, OSSL_NELEM(keys));
+#ifndef OPENSSL_NO_DEPRECATED_3_0
     custom_pmeth = EVP_PKEY_meth_new(0xdefaced, 0);
     if (!TEST_ptr(custom_pmeth))
         return 0;
@@ -1734,6 +1842,7 @@ int setup_tests(void)
     EVP_PKEY_meth_set_param_check(custom_pmeth, pkey_custom_param_check);
     if (!TEST_int_eq(EVP_PKEY_meth_add0(custom_pmeth), 1))
         return 0;
+#endif
     ADD_ALL_TESTS(test_EVP_PKEY_check, OSSL_NELEM(keycheckdata));
 #ifndef OPENSSL_NO_CMAC
     ADD_TEST(test_CMAC_keygen);
@@ -1757,6 +1866,8 @@ int setup_tests(void)
 #endif
     ADD_ALL_TESTS(test_keygen_with_empty_template, 2);
     ADD_ALL_TESTS(test_pkey_ctx_fail_without_provider, 2);
+
+    ADD_TEST(test_rand_agglomeration);
 
     return 1;
 }

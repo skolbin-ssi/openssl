@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -8,7 +8,7 @@
  */
 
 #include <openssl/core.h>
-#include <openssl/core_numbers.h>
+#include <openssl/core_dispatch.h>
 #include <openssl/serializer.h>
 #include <openssl/ui.h>
 #include "internal/core.h"
@@ -29,13 +29,13 @@ static OSSL_SERIALIZER *ossl_serializer_new(void)
     OSSL_SERIALIZER *ser = NULL;
 
     if ((ser = OPENSSL_zalloc(sizeof(*ser))) == NULL
-        || (ser->lock = CRYPTO_THREAD_lock_new()) == NULL) {
+        || (ser->base.lock = CRYPTO_THREAD_lock_new()) == NULL) {
         OSSL_SERIALIZER_free(ser);
         ERR_raise(ERR_LIB_OSSL_SERIALIZER, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
 
-    ser->refcnt = 1;
+    ser->base.refcnt = 1;
 
     return ser;
 }
@@ -44,7 +44,7 @@ int OSSL_SERIALIZER_up_ref(OSSL_SERIALIZER *ser)
 {
     int ref = 0;
 
-    CRYPTO_UP_REF(&ser->refcnt, &ref, ser->lock);
+    CRYPTO_UP_REF(&ser->base.refcnt, &ref, ser->base.lock);
     return 1;
 }
 
@@ -55,11 +55,11 @@ void OSSL_SERIALIZER_free(OSSL_SERIALIZER *ser)
     if (ser == NULL)
         return;
 
-    CRYPTO_DOWN_REF(&ser->refcnt, &ref, ser->lock);
+    CRYPTO_DOWN_REF(&ser->base.refcnt, &ref, ser->base.lock);
     if (ref > 0)
         return;
-    ossl_provider_free(ser->prov);
-    CRYPTO_THREAD_lock_free(ser->lock);
+    ossl_provider_free(ser->base.prov);
+    CRYPTO_THREAD_lock_free(ser->base.lock);
     OPENSSL_free(ser);
 }
 
@@ -165,40 +165,40 @@ static void *serializer_from_dispatch(int id, const OSSL_ALGORITHM *algodef,
 
     if ((ser = ossl_serializer_new()) == NULL)
         return NULL;
-    ser->id = id;
-    ser->propdef = algodef->property_definition;
+    ser->base.id = id;
+    ser->base.propdef = algodef->property_definition;
 
     for (; fns->function_id != 0; fns++) {
         switch (fns->function_id) {
         case OSSL_FUNC_SERIALIZER_NEWCTX:
             if (ser->newctx == NULL)
                 ser->newctx =
-                    OSSL_get_OP_serializer_newctx(fns);
+                    OSSL_FUNC_serializer_newctx(fns);
             break;
         case OSSL_FUNC_SERIALIZER_FREECTX:
             if (ser->freectx == NULL)
                 ser->freectx =
-                    OSSL_get_OP_serializer_freectx(fns);
+                    OSSL_FUNC_serializer_freectx(fns);
             break;
         case OSSL_FUNC_SERIALIZER_SET_CTX_PARAMS:
             if (ser->set_ctx_params == NULL)
                 ser->set_ctx_params =
-                    OSSL_get_OP_serializer_set_ctx_params(fns);
+                    OSSL_FUNC_serializer_set_ctx_params(fns);
             break;
         case OSSL_FUNC_SERIALIZER_SETTABLE_CTX_PARAMS:
             if (ser->settable_ctx_params == NULL)
                 ser->settable_ctx_params =
-                    OSSL_get_OP_serializer_settable_ctx_params(fns);
+                    OSSL_FUNC_serializer_settable_ctx_params(fns);
             break;
         case OSSL_FUNC_SERIALIZER_SERIALIZE_DATA:
             if (ser->serialize_data == NULL)
                 ser->serialize_data =
-                    OSSL_get_OP_serializer_serialize_data(fns);
+                    OSSL_FUNC_serializer_serialize_data(fns);
             break;
         case OSSL_FUNC_SERIALIZER_SERIALIZE_OBJECT:
             if (ser->serialize_object == NULL)
                 ser->serialize_object =
-                    OSSL_get_OP_serializer_serialize_object(fns);
+                    OSSL_FUNC_serializer_serialize_object(fns);
             break;
         }
     }
@@ -220,7 +220,7 @@ static void *serializer_from_dispatch(int id, const OSSL_ALGORITHM *algodef,
         return NULL;
     }
 
-    ser->prov = prov;
+    ser->base.prov = prov;
     return ser;
 }
 
@@ -348,7 +348,7 @@ const OSSL_PROVIDER *OSSL_SERIALIZER_provider(const OSSL_SERIALIZER *ser)
         return 0;
     }
 
-    return ser->prov;
+    return ser->base.prov;
 }
 
 const char *OSSL_SERIALIZER_properties(const OSSL_SERIALIZER *ser)
@@ -358,7 +358,7 @@ const char *OSSL_SERIALIZER_properties(const OSSL_SERIALIZER *ser)
         return 0;
     }
 
-    return ser->propdef;
+    return ser->base.propdef;
 }
 
 int OSSL_SERIALIZER_number(const OSSL_SERIALIZER *ser)
@@ -368,16 +368,16 @@ int OSSL_SERIALIZER_number(const OSSL_SERIALIZER *ser)
         return 0;
     }
 
-    return ser->id;
+    return ser->base.id;
 }
 
 int OSSL_SERIALIZER_is_a(const OSSL_SERIALIZER *ser, const char *name)
 {
-    if (ser->prov != NULL) {
-        OPENSSL_CTX *libctx = ossl_provider_library_context(ser->prov);
+    if (ser->base.prov != NULL) {
+        OPENSSL_CTX *libctx = ossl_provider_library_context(ser->base.prov);
         OSSL_NAMEMAP *namemap = ossl_namemap_stored(libctx);
 
-        return ossl_namemap_name2num(namemap, name) == ser->id;
+        return ossl_namemap_name2num(namemap, name) == ser->base.id;
     }
     return 0;
 }
@@ -433,11 +433,11 @@ void OSSL_SERIALIZER_names_do_all(const OSSL_SERIALIZER *ser,
     if (ser == NULL)
         return;
 
-    if (ser->prov != NULL) {
-        OPENSSL_CTX *libctx = ossl_provider_library_context(ser->prov);
+    if (ser->base.prov != NULL) {
+        OPENSSL_CTX *libctx = ossl_provider_library_context(ser->base.prov);
         OSSL_NAMEMAP *namemap = ossl_namemap_stored(libctx);
 
-        ossl_namemap_doall_names(namemap, ser->id, fn, data);
+        ossl_namemap_doall_names(namemap, ser->base.id, fn, data);
     }
 }
 

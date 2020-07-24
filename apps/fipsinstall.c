@@ -15,14 +15,13 @@
 #include <openssl/fips_names.h>
 #include <openssl/core_names.h>
 #include <openssl/self_test.h>
+#include <openssl/fipskey.h>
 #include "apps.h"
 #include "progs.h"
 
 DEFINE_STACK_OF_STRING()
 
 #define BUFSIZE 4096
-#define DEFAULT_MAC_NAME "HMAC"
-#define DEFAULT_FIPS_SECTION "fips_check_section"
 
 /* Configuration file values */
 #define VERSION_KEY  "version"
@@ -39,7 +38,7 @@ typedef enum OPTION_choice {
     OPT_ERR = -1, OPT_EOF = 0, OPT_HELP,
     OPT_IN, OPT_OUT, OPT_MODULE,
     OPT_PROV_NAME, OPT_SECTION_NAME, OPT_MAC_NAME, OPT_MACOPT, OPT_VERIFY,
-    OPT_NO_LOG, OPT_CORRUPT_DESC, OPT_CORRUPT_TYPE, OPT_QUIET
+    OPT_NO_LOG, OPT_CORRUPT_DESC, OPT_CORRUPT_TYPE, OPT_QUIET, OPT_CONFIG
 } OPTION_CHOICE;
 
 const OPTIONS fipsinstall_options[] = {
@@ -63,6 +62,7 @@ const OPTIONS fipsinstall_options[] = {
     {"noout", OPT_NO_LOG, '-', "Disable logging of self test events"},
     {"corrupt_desc", OPT_CORRUPT_DESC, 's', "Corrupt a self test by description"},
     {"corrupt_type", OPT_CORRUPT_TYPE, 's', "Corrupt a self test by type"},
+    {"config", OPT_CONFIG, '<', "The parent config to verify"},
     {"quiet", OPT_QUIET, '-', "No messages, just exit status"},
     {NULL}
 };
@@ -203,6 +203,11 @@ static void free_config_and_unload(CONF *conf)
     }
 }
 
+static int verify_module_load(const char *parent_config_file)
+{
+    return OPENSSL_CTX_load_config(NULL, parent_config_file);
+}
+
 /*
  * Returns 1 if the config file entries match the passed in module_mac and
  * install_mac values, otherwise it returns 0.
@@ -266,11 +271,13 @@ end:
 
 int fipsinstall_main(int argc, char **argv)
 {
-    int ret = 1, verify = 0;
+    int ret = 1, verify = 0, gotkey = 0, gotdigest = 0;
+    const char *section_name = "fips_sect";
+    const char *mac_name = "HMAC";
+    const char *prov_name = "fips";
     BIO *module_bio = NULL, *mem_bio = NULL, *fout = NULL;
-    char *in_fname = NULL, *out_fname = NULL, *prog, *section_name = NULL;
-    char *prov_name = NULL, *module_fname = NULL;
-    static const char *mac_name = DEFAULT_MAC_NAME;
+    char *in_fname = NULL, *out_fname = NULL, *prog;
+    char *module_fname = NULL, *parent_config = NULL;
     EVP_MAC_CTX *ctx = NULL, *ctx2 = NULL;
     STACK_OF(OPENSSL_STRING) *opts = NULL;
     OPTION_CHOICE o;
@@ -282,7 +289,8 @@ int fipsinstall_main(int argc, char **argv)
     EVP_MAC *mac = NULL;
     CONF *conf = NULL;
 
-    section_name = DEFAULT_FIPS_SECTION;
+    if ((opts = sk_OPENSSL_STRING_new_null()) == NULL)
+        goto end;
 
     prog = opt_init(argc, argv, fipsinstall_options);
     while ((o = opt_next()) != OPT_EOF) {
@@ -326,11 +334,16 @@ opthelp:
         case OPT_MAC_NAME:
             mac_name = opt_arg();
             break;
+        case OPT_CONFIG:
+            parent_config = opt_arg();
+            break;
         case OPT_MACOPT:
-            if (opts == NULL)
-                opts = sk_OPENSSL_STRING_new_null();
-            if (opts == NULL || !sk_OPENSSL_STRING_push(opts, opt_arg()))
+            if (!sk_OPENSSL_STRING_push(opts, opt_arg()))
                 goto opthelp;
+            if (strncmp(opt_arg(), "hexkey:", 7) == 0)
+                gotkey = 1;
+            else if (strncmp(opt_arg(), "digest:", 7) == 0)
+                gotdigest = 1;
             break;
         case OPT_VERIFY:
             verify = 1;
@@ -338,10 +351,20 @@ opthelp:
         }
     }
     argc = opt_num_rest();
+
+    if (parent_config != NULL) {
+        /* Test that a parent config can load the module */
+        if (verify_module_load(parent_config)) {
+            ret = OSSL_PROVIDER_available(NULL, prov_name) ? 0 : 1;
+            if (!quiet)
+                BIO_printf(bio_out, "FIPS provider is %s\n",
+                           ret == 0 ? "available" : " not available");
+        }
+        goto end;
+    }
     if (module_fname == NULL
         || (verify && in_fname == NULL)
-        || (!verify && (out_fname == NULL || prov_name == NULL))
-        || opts == NULL
+        || (!verify && out_fname == NULL)
         || argc != 0)
         goto opthelp;
 
@@ -349,6 +372,12 @@ opthelp:
             || self_test_corrupt_desc != NULL
             || self_test_corrupt_type != NULL)
         OSSL_SELF_TEST_set_callback(NULL, self_test_events, NULL);
+
+    /* Use the default FIPS HMAC digest and key if not specified. */
+    if (!gotdigest && !sk_OPENSSL_STRING_push(opts, "digest:SHA256"))
+        goto end;
+    if (!gotkey && !sk_OPENSSL_STRING_push(opts, "hexkey:" FIPS_KEY_STRING))
+        goto end;
 
     module_bio = bio_open_default(module_fname, 'r', FORMAT_BINARY);
     if (module_bio == NULL) {

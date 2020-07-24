@@ -571,8 +571,6 @@ GENERAL_NAME *v2i_GENERAL_NAME_ex(GENERAL_NAME *out,
                                   X509V3_CTX *ctx, CONF_VALUE *cnf,
                                   int is_nc);
 
-int X509v3_cache_extensions(X509 *x, OPENSSL_CTX *libctx, const char *propq);
-
 void X509V3_conf_free(CONF_VALUE *val);
 
 X509_EXTENSION *X509V3_EXT_nconf_nid(CONF *conf, X509V3_CTX *ctx, int ext_nid,
@@ -667,7 +665,7 @@ int X509_check_purpose(X509 *x, int id, int ca);
 int X509_supported_extension(X509_EXTENSION *ex);
 int X509_PURPOSE_set(int *p, int purpose);
 int X509_check_issued(X509 *issuer, X509 *subject);
-int X509_check_akid(X509 *issuer, AUTHORITY_KEYID *akid);
+int X509_check_akid(const X509 *issuer, const AUTHORITY_KEYID *akid);
 void X509_set_proxy_flag(X509 *x);
 void X509_set_proxy_pathlen(X509 *x, long l);
 long X509_get_proxy_pathlen(X509 *x);

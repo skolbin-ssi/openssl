@@ -22,19 +22,24 @@
 
 DEFINE_SPECIAL_STACK_OF_CONST(BIGNUM_const, BIGNUM)
 
-OSSL_OP_keymgmt_new_fn *ossl_prov_get_keymgmt_rsa_new(void)
+OSSL_FUNC_keymgmt_new_fn *ossl_prov_get_keymgmt_rsa_new(void)
 {
     return ossl_prov_get_keymgmt_new(rsa_keymgmt_functions);
 }
 
-OSSL_OP_keymgmt_free_fn *ossl_prov_get_keymgmt_rsa_free(void)
+OSSL_FUNC_keymgmt_free_fn *ossl_prov_get_keymgmt_rsa_free(void)
 {
     return ossl_prov_get_keymgmt_free(rsa_keymgmt_functions);
 }
 
-OSSL_OP_keymgmt_import_fn *ossl_prov_get_keymgmt_rsa_import(void)
+OSSL_FUNC_keymgmt_import_fn *ossl_prov_get_keymgmt_rsa_import(void)
 {
     return ossl_prov_get_keymgmt_import(rsa_keymgmt_functions);
+}
+
+OSSL_FUNC_keymgmt_export_fn *ossl_prov_get_keymgmt_rsa_export(void)
+{
+    return ossl_prov_get_keymgmt_export(rsa_keymgmt_functions);
 }
 
 int ossl_prov_print_rsa(BIO *out, RSA *rsa, int priv)

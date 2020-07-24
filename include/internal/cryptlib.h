@@ -156,9 +156,11 @@ typedef struct ossl_ex_data_global_st {
 # define OPENSSL_CTX_THREAD_EVENT_HANDLER_INDEX     8
 # define OPENSSL_CTX_FIPS_PROV_INDEX                9
 # define OPENSSL_CTX_SERIALIZER_STORE_INDEX        10
-# define OPENSSL_CTX_SELF_TEST_CB_INDEX            11
-# define OPENSSL_CTX_BIO_PROV_INDEX                12
-# define OPENSSL_CTX_MAX_INDEXES                   13
+# define OPENSSL_CTX_DESERIALIZER_STORE_INDEX      11
+# define OPENSSL_CTX_SELF_TEST_CB_INDEX            12
+# define OPENSSL_CTX_BIO_PROV_INDEX                13
+# define OPENSSL_CTX_GLOBAL_PROPERTIES             14
+# define OPENSSL_CTX_MAX_INDEXES                   15
 
 typedef struct openssl_ctx_method {
     void *(*new_func)(OPENSSL_CTX *ctx);
@@ -167,6 +169,7 @@ typedef struct openssl_ctx_method {
 
 OPENSSL_CTX *openssl_ctx_get_concrete(OPENSSL_CTX *ctx);
 int openssl_ctx_is_default(OPENSSL_CTX *ctx);
+int openssl_ctx_is_global_default(OPENSSL_CTX *ctx);
 
 /* Functions to retrieve pointers to data by index */
 void *openssl_ctx_get_data(OPENSSL_CTX *, int /* index */,

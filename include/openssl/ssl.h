@@ -138,6 +138,7 @@ extern "C" {
 # define SSL_TXT_ARIA128         "ARIA128"
 # define SSL_TXT_ARIA256         "ARIA256"
 # define SSL_TXT_GOST2012_GOST8912_GOST8912 "GOST2012-GOST8912-GOST8912"
+# define SSL_TXT_CBC             "CBC"
 
 # define SSL_TXT_MD5             "MD5"
 # define SSL_TXT_SHA1            "SHA1"
@@ -320,7 +321,8 @@ typedef int (*SSL_async_callback_fn)(SSL *s, void *arg);
 /* Disable Extended master secret */
 # define SSL_OP_NO_EXTENDED_MASTER_SECRET                0x00000001U
 
-/* Reserved value (until OpenSSL 3.0.0)                  0x00000002U */
+/* Cleanse plaintext copies of data delivered to the application */
+# define SSL_OP_CLEANSE_PLAINTEXT                        0x00000002U
 
 /* Allow initial connection to servers that don't support RI */
 # define SSL_OP_LEGACY_SERVER_CONNECT                    0x00000004U
@@ -1627,6 +1629,9 @@ __owur int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file,
 __owur int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file);
 __owur int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
 __owur STACK_OF(X509_NAME) *SSL_load_client_CA_file(const char *file);
+__owur STACK_OF(X509_NAME)
+*SSL_load_client_CA_file_with_libctx(const char *file,
+                                     OPENSSL_CTX *libctx, const char *propq);
 __owur int SSL_add_file_cert_subjects_to_stack(STACK_OF(X509_NAME) *stackCAs,
                                                const char *file);
 int SSL_add_dir_cert_subjects_to_stack(STACK_OF(X509_NAME) *stackCAs,
@@ -1704,7 +1709,12 @@ SSL_SESSION *d2i_SSL_SESSION(SSL_SESSION **a, const unsigned char **pp,
                              long length);
 
 # ifdef OPENSSL_X509_H
-__owur X509 *SSL_get_peer_certificate(const SSL *s);
+__owur X509 *SSL_get0_peer_certificate(const SSL *s);
+__owur X509 *SSL_get1_peer_certificate(const SSL *s);
+/* Deprecated in 3.0.0 */
+#  ifndef OPENSSL_NO_DEPRECATED_3_0
+#   define SSL_get_peer_certificate SSL_get1_peer_certificate
+#  endif
 # endif
 
 __owur STACK_OF(X509) *SSL_get_peer_cert_chain(const SSL *s);
@@ -2166,7 +2176,7 @@ void SSL_CTX_set_record_padding_callback_arg(SSL_CTX *ctx, void *arg);
 void *SSL_CTX_get_record_padding_callback_arg(const SSL_CTX *ctx);
 int SSL_CTX_set_block_padding(SSL_CTX *ctx, size_t block_size);
 
-void SSL_set_record_padding_callback(SSL *ssl,
+int SSL_set_record_padding_callback(SSL *ssl,
                                     size_t (*cb) (SSL *ssl, int type,
                                                   size_t len, void *arg));
 void SSL_set_record_padding_callback_arg(SSL *ssl, void *arg);

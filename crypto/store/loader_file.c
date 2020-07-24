@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use some engine deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #include "e_os.h"
 #include <string.h>
 #include <sys/stat.h>
@@ -36,7 +39,7 @@
 DEFINE_STACK_OF(X509)
 
 #ifdef _WIN32
-# define stat    _stat
+# define stat _stat
 #endif
 
 #ifndef S_ISDIR
@@ -219,7 +222,6 @@ static OSSL_STORE_INFO *try_decode_PKCS12(const char *pem_name,
     if (ctx == NULL) {
         /* Initial parsing */
         PKCS12 *p12;
-        int ok = 0;
 
         if (pem_name != NULL)
             /* No match, there is no PEM PKCS12 tag */
@@ -256,37 +258,46 @@ static OSSL_STORE_INFO *try_decode_PKCS12(const char *pem_name,
                 OSSL_STORE_INFO *osi_pkey = NULL;
                 OSSL_STORE_INFO *osi_cert = NULL;
                 OSSL_STORE_INFO *osi_ca = NULL;
+                int ok = 1;
 
-                if ((ctx = sk_OSSL_STORE_INFO_new_null()) != NULL
-                    && (osi_pkey = OSSL_STORE_INFO_new_PKEY(pkey)) != NULL
-                    && sk_OSSL_STORE_INFO_push(ctx, osi_pkey) != 0
-                    && (osi_cert = OSSL_STORE_INFO_new_CERT(cert)) != NULL
-                    && sk_OSSL_STORE_INFO_push(ctx, osi_cert) != 0) {
-                    ok = 1;
-                    osi_pkey = NULL;
-                    osi_cert = NULL;
-
-                    while(sk_X509_num(chain) > 0) {
+                if ((ctx = sk_OSSL_STORE_INFO_new_null()) != NULL) {
+                    if (pkey != NULL) {
+                        if ((osi_pkey = OSSL_STORE_INFO_new_PKEY(pkey)) != NULL
+                            /* clearing pkey here avoids case distinctions */
+                            && (pkey = NULL) == NULL
+                            && sk_OSSL_STORE_INFO_push(ctx, osi_pkey) != 0)
+                            osi_pkey = NULL;
+                        else
+                            ok = 0;
+                    }
+                    if (ok && cert != NULL) {
+                        if ((osi_cert = OSSL_STORE_INFO_new_CERT(cert)) != NULL
+                            /* clearing cert here avoids case distinctions */
+                            && (cert = NULL) == NULL
+                            && sk_OSSL_STORE_INFO_push(ctx, osi_cert) != 0)
+                            osi_cert = NULL;
+                        else
+                            ok = 0;
+                    }
+                    while (ok && sk_X509_num(chain) > 0) {
                         X509 *ca = sk_X509_value(chain, 0);
 
-                        if ((osi_ca = OSSL_STORE_INFO_new_CERT(ca)) == NULL
-                            || sk_OSSL_STORE_INFO_push(ctx, osi_ca) == 0) {
+                        if ((osi_ca = OSSL_STORE_INFO_new_CERT(ca)) != NULL
+                            && sk_X509_shift(chain) != NULL
+                            && sk_OSSL_STORE_INFO_push(ctx, osi_ca) != 0)
+                            osi_ca = NULL;
+                        else
                             ok = 0;
-                            break;
-                        }
-                        osi_ca = NULL;
-                        (void)sk_X509_shift(chain);
                     }
                 }
-                sk_X509_free(chain);
+                EVP_PKEY_free(pkey);
+                X509_free(cert);
+                sk_X509_pop_free(chain, X509_free);
+                OSSL_STORE_INFO_free(osi_pkey);
+                OSSL_STORE_INFO_free(osi_cert);
+                OSSL_STORE_INFO_free(osi_ca);
                 if (!ok) {
-                    OSSL_STORE_INFO_free(osi_ca);
-                    OSSL_STORE_INFO_free(osi_cert);
-                    OSSL_STORE_INFO_free(osi_pkey);
                     sk_OSSL_STORE_INFO_pop_free(ctx, OSSL_STORE_INFO_free);
-                    EVP_PKEY_free(pkey);
-                    X509_free(cert);
-                    sk_X509_pop_free(chain, X509_free);
                     ctx = NULL;
                 }
                 *pctx = ctx;
@@ -294,15 +305,12 @@ static OSSL_STORE_INFO *try_decode_PKCS12(const char *pem_name,
         }
      p12_end:
         PKCS12_free(p12);
-        if (!ok)
+        if (ctx == NULL)
             return NULL;
     }
 
-    if (ctx != NULL) {
-        *matchcount = 1;
-        store_info = sk_OSSL_STORE_INFO_shift(ctx);
-    }
-
+    *matchcount = 1;
+    store_info = sk_OSSL_STORE_INFO_shift(ctx);
     return store_info;
 }
 
@@ -326,7 +334,7 @@ static FILE_HANDLER PKCS12_handler = {
     try_decode_PKCS12,
     eof_PKCS12,
     destroy_ctx_PKCS12,
-    1                            /* repeatable */
+    1 /* repeatable */
 };
 
 /*
@@ -685,8 +693,12 @@ static OSSL_STORE_INFO *try_decode_X509Certificate(const char *pem_name,
         *matchcount = 1;
     }
 
-    if ((cert = d2i_X509_AUX(NULL, &blob, len)) != NULL
-        || (ignore_trusted && (cert = d2i_X509(NULL, &blob, len)) != NULL)) {
+    cert = X509_new_with_libctx(libctx, propq);
+    if (cert == NULL)
+        return NULL;
+
+    if ((d2i_X509_AUX(&cert, &blob, len)) != NULL
+        || (ignore_trusted && (d2i_X509(&cert, &blob, len)) != NULL)) {
         *matchcount = 1;
         store_info = OSSL_STORE_INFO_new_CERT(cert);
     }
@@ -772,7 +784,7 @@ struct ossl_store_loader_ctx_st {
 #define FILE_FLAG_ATTACHED       (1<<1)
     unsigned int flags;
     union {
-        struct {                 /* Used with is_raw and is_pem */
+        struct { /* Used with is_raw and is_pem */
             BIO *file;
 
             /*
@@ -782,7 +794,7 @@ struct ossl_store_loader_ctx_st {
             const FILE_HANDLER *last_handler;
             void *last_handler_ctx;
         } file;
-        struct {                 /* Used with is_dir */
+        struct { /* Used with is_dir */
             OPENSSL_DIR_CTX *ctx;
             int end_reached;
 
@@ -805,7 +817,6 @@ struct ossl_store_loader_ctx_st {
 
     /* Expected object type.  May be unspecified */
     int expected_type;
-
     OPENSSL_CTX *libctx;
     char *propq;
 };
@@ -815,6 +826,7 @@ static void OSSL_STORE_LOADER_CTX_free(OSSL_STORE_LOADER_CTX *ctx)
     if (ctx == NULL)
         return;
 
+    OPENSSL_free(ctx->propq);
     OPENSSL_free(ctx->uri);
     if (ctx->type != is_dir) {
         if (ctx->_.file.last_handler != NULL) {
@@ -823,7 +835,6 @@ static void OSSL_STORE_LOADER_CTX_free(OSSL_STORE_LOADER_CTX *ctx)
             ctx->_.file.last_handler = NULL;
         }
     }
-    OPENSSL_free(ctx->propq);
     OPENSSL_free(ctx);
 }
 
@@ -844,10 +855,10 @@ static int file_find_type(OSSL_STORE_LOADER_CTX *ctx)
     return 1;
 }
 
-static OSSL_STORE_LOADER_CTX *file_open(const OSSL_STORE_LOADER *loader,
-                                        const char *uri,
-                                        const UI_METHOD *ui_method,
-                                        void *ui_data)
+static OSSL_STORE_LOADER_CTX *file_open_with_libctx
+    (const OSSL_STORE_LOADER *loader, const char *uri,
+     OPENSSL_CTX *libctx, const char *propq,
+     const UI_METHOD *ui_method, void *ui_data)
 {
     OSSL_STORE_LOADER_CTX *ctx = NULL;
     struct stat st;
@@ -880,8 +891,7 @@ static OSSL_STORE_LOADER_CTX *file_open(const OSSL_STORE_LOADER *loader,
             } else if (uri[7] == '/') {
                 p = &uri[7];
             } else {
-                OSSL_STOREerr(OSSL_STORE_F_FILE_OPEN,
-                              OSSL_STORE_R_URI_AUTHORITY_UNSUPPORTED);
+                OSSL_STOREerr(0, OSSL_STORE_R_URI_AUTHORITY_UNSUPPORTED);
                 return NULL;
             }
         }
@@ -909,8 +919,7 @@ static OSSL_STORE_LOADER_CTX *file_open(const OSSL_STORE_LOADER *loader,
          * be absolute.  So says RFC 8089
          */
         if (path_data[i].check_absolute && path_data[i].path[0] != '/') {
-            OSSL_STOREerr(OSSL_STORE_F_FILE_OPEN,
-                          OSSL_STORE_R_PATH_MUST_BE_ABSOLUTE);
+            OSSL_STOREerr(0, OSSL_STORE_R_PATH_MUST_BE_ABSOLUTE);
             ERR_add_error_data(1, path_data[i].path);
             return NULL;
         }
@@ -932,12 +941,12 @@ static OSSL_STORE_LOADER_CTX *file_open(const OSSL_STORE_LOADER *loader,
 
     ctx = OPENSSL_zalloc(sizeof(*ctx));
     if (ctx == NULL) {
-        OSSL_STOREerr(OSSL_STORE_F_FILE_OPEN, ERR_R_MALLOC_FAILURE);
+        OSSL_STOREerr(0, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
     ctx->uri = OPENSSL_strdup(uri);
     if (ctx->uri == NULL) {
-        OSSL_STOREerr(OSSL_STORE_F_FILE_OPEN, ERR_R_MALLOC_FAILURE);
+        OSSL_STOREerr(0, ERR_R_MALLOC_FAILURE);
         goto err;
     }
 
@@ -948,7 +957,7 @@ static OSSL_STORE_LOADER_CTX *file_open(const OSSL_STORE_LOADER *loader,
         if (ctx->_.dir.last_entry == NULL) {
             if (ctx->_.dir.last_errno != 0) {
                 char errbuf[256];
-                OSSL_STOREerr(OSSL_STORE_F_FILE_OPEN, ERR_R_SYS_LIB);
+                OSSL_STOREerr(0, ERR_R_SYS_LIB);
                 errno = ctx->_.dir.last_errno;
                 if (openssl_strerror_r(errno, errbuf, sizeof(errbuf)))
                     ERR_add_error_data(1, errbuf);
@@ -961,6 +970,14 @@ static OSSL_STORE_LOADER_CTX *file_open(const OSSL_STORE_LOADER *loader,
         BIO_free_all(ctx->_.file.file);
         goto err;
     }
+    if (propq != NULL) {
+        ctx->propq = OPENSSL_strdup(propq);
+        if (ctx->propq == NULL) {
+            OSSL_STOREerr(0, ERR_R_MALLOC_FAILURE);
+            goto err;
+        }
+    }
+    ctx->libctx = libctx;
 
     return ctx;
  err:
@@ -968,32 +985,44 @@ static OSSL_STORE_LOADER_CTX *file_open(const OSSL_STORE_LOADER *loader,
     return NULL;
 }
 
-static OSSL_STORE_LOADER_CTX *file_attach(const OSSL_STORE_LOADER *loader,
-                                          BIO *bp, OPENSSL_CTX *libctx,
-                                          const char *propq,
-                                          const UI_METHOD *ui_method,
-                                          void *ui_data)
+static OSSL_STORE_LOADER_CTX *file_open
+    (const OSSL_STORE_LOADER *loader, const char *uri,
+     const UI_METHOD *ui_method, void *ui_data)
 {
-    OSSL_STORE_LOADER_CTX *ctx;
+    return file_open_with_libctx(loader, uri, NULL, NULL, ui_method, ui_data);
+}
 
-    if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) == NULL
-        || (propq != NULL && (ctx->propq = OPENSSL_strdup(propq)) == NULL)) {
-        OSSL_STOREerr(OSSL_STORE_F_FILE_ATTACH, ERR_R_MALLOC_FAILURE);
-        OSSL_STORE_LOADER_CTX_free(ctx);
-        return NULL;
+static OSSL_STORE_LOADER_CTX *file_attach
+    (const OSSL_STORE_LOADER *loader, BIO *bp,
+     OPENSSL_CTX *libctx, const char *propq,
+     const UI_METHOD *ui_method, void *ui_data)
+{
+    OSSL_STORE_LOADER_CTX *ctx = NULL;
+
+    if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) == NULL) {
+        OSSL_STOREerr(0, ERR_R_MALLOC_FAILURE);
+        goto err;
     }
 
+    if (propq != NULL) {
+        ctx->propq = OPENSSL_strdup(propq);
+        if (ctx->propq == NULL) {
+            OSSL_STOREerr(0, ERR_R_MALLOC_FAILURE);
+            goto err;
+        }
+    }
     ctx->libctx = libctx;
     ctx->flags |= FILE_FLAG_ATTACHED;
     ctx->_.file.file = bp;
     if (!file_find_type(ctx)) {
         /* Safety measure */
         ctx->_.file.file = NULL;
-        OSSL_STORE_LOADER_CTX_free(ctx);
-        ctx = NULL;
+        goto err;
     }
-
     return ctx;
+err:
+    OSSL_STORE_LOADER_CTX_free(ctx);
+    return NULL;
 }
 
 static int file_ctrl(OSSL_STORE_LOADER_CTX *ctx, int cmd, va_list args)
@@ -1013,8 +1042,7 @@ static int file_ctrl(OSSL_STORE_LOADER_CTX *ctx, int cmd, va_list args)
                 ctx->flags |= FILE_FLAG_SECMEM;
                 break;
             default:
-                OSSL_STOREerr(OSSL_STORE_F_FILE_CTRL,
-                              ERR_R_PASSED_INVALID_ARGUMENT);
+                OSSL_STOREerr(0, ERR_R_PASSED_INVALID_ARGUMENT);
                 ret = 0;
                 break;
             }
@@ -1316,10 +1344,10 @@ static int ends_with_dirsep(const char *uri)
 {
     if (*uri != '\0')
         uri += strlen(uri) - 1;
-#if defined __VMS
+#if defined(__VMS)
     if (*uri == ']' || *uri == '>' || *uri == ':')
         return 1;
-#elif defined _WIN32
+#elif defined(_WIN32)
     if (*uri == '\\')
         return 1;
 #endif
@@ -1394,7 +1422,7 @@ static int file_name_check(OSSL_STORE_LOADER_CTX *ctx, const char *name)
     while (ossl_isdigit(*p))
         p++;
 
-# ifdef __VMS
+#ifdef __VMS
     /*
      * One extra step here, check for a possible generation number.
      */
@@ -1402,7 +1430,7 @@ static int file_name_check(OSSL_STORE_LOADER_CTX *ctx, const char *name)
         for (p++; *p != '\0'; p++)
             if (!ossl_isdigit(*p))
                 break;
-# endif
+#endif
 
     /*
      * If we've reached the end of the string at this point, we've successfully
@@ -1414,7 +1442,8 @@ static int file_name_check(OSSL_STORE_LOADER_CTX *ctx, const char *name)
 static int file_eof(OSSL_STORE_LOADER_CTX *ctx);
 static int file_error(OSSL_STORE_LOADER_CTX *ctx);
 static OSSL_STORE_INFO *file_load(OSSL_STORE_LOADER_CTX *ctx,
-                                  const UI_METHOD *ui_method, void *ui_data)
+                                  const UI_METHOD *ui_method,
+                                  void *ui_data)
 {
     OSSL_STORE_INFO *result = NULL;
 
@@ -1429,7 +1458,7 @@ static OSSL_STORE_INFO *file_load(OSSL_STORE_LOADER_CTX *ctx,
                 if (!ctx->_.dir.end_reached) {
                     char errbuf[256];
                     assert(ctx->_.dir.last_errno != 0);
-                    OSSL_STOREerr(OSSL_STORE_F_FILE_LOAD, ERR_R_SYS_LIB);
+                    OSSL_STOREerr(0, ERR_R_SYS_LIB);
                     errno = ctx->_.dir.last_errno;
                     ctx->errcnt++;
                     if (openssl_strerror_r(errno, errbuf, sizeof(errbuf)))
@@ -1457,7 +1486,7 @@ static OSSL_STORE_INFO *file_load(OSSL_STORE_LOADER_CTX *ctx,
             if (newname != NULL
                 && (result = OSSL_STORE_INFO_new_NAME(newname)) == NULL) {
                 OPENSSL_free(newname);
-                OSSL_STOREerr(OSSL_STORE_F_FILE_LOAD, ERR_R_OSSL_STORE_LIB);
+                OSSL_STOREerr(0, ERR_R_OSSL_STORE_LIB);
                 return NULL;
             }
         } while (result == NULL && !file_eof(ctx));
@@ -1516,16 +1545,14 @@ static OSSL_STORE_INFO *file_load(OSSL_STORE_LOADER_CTX *ctx,
             }
 
             if (matchcount > 1) {
-                OSSL_STOREerr(OSSL_STORE_F_FILE_LOAD,
-                              OSSL_STORE_R_AMBIGUOUS_CONTENT_TYPE);
+                OSSL_STOREerr(0, OSSL_STORE_R_AMBIGUOUS_CONTENT_TYPE);
             } else if (matchcount == 1) {
                 /*
                  * If there are other errors on the stack, they already show
                  * what the problem is.
                  */
                 if (ERR_peek_error() == 0) {
-                    OSSL_STOREerr(OSSL_STORE_F_FILE_LOAD,
-                                  OSSL_STORE_R_UNSUPPORTED_CONTENT_TYPE);
+                    OSSL_STOREerr(0, OSSL_STORE_R_UNSUPPORTED_CONTENT_TYPE);
                     if (pem_name != NULL)
                         ERR_add_error_data(3, "PEM type is '", pem_name, "'");
                 }
@@ -1540,8 +1567,10 @@ static OSSL_STORE_INFO *file_load(OSSL_STORE_LOADER_CTX *ctx,
         } while (matchcount == 0 && !file_eof(ctx) && !file_error(ctx));
 
         /* We bail out on ambiguity */
-        if (matchcount > 1)
+        if (matchcount > 1) {
+            OSSL_STORE_INFO_free(result);
             return NULL;
+        }
 
         if (result != NULL
             && ctx->expected_type != 0
@@ -1607,7 +1636,8 @@ static OSSL_STORE_LOADER file_loader =
         file_load,
         file_eof,
         file_error,
-        file_close
+        file_close,
+        file_open_with_libctx,
     };
 
 static void store_file_loader_deinit(void)

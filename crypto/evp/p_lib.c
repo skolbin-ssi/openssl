@@ -219,23 +219,22 @@ static int evp_pkey_cmp_any(const EVP_PKEY *a, const EVP_PKEY *b,
     void *keydata1 = NULL, *keydata2 = NULL, *tmp_keydata = NULL;
 
     /* If none of them are provided, this function shouldn't have been called */
-    if (!ossl_assert(a->keymgmt != NULL || b->keymgmt != NULL))
+    if (!ossl_assert(evp_pkey_is_provided(a) || evp_pkey_is_provided(b)))
         return -2;
 
     /* For purely provided keys, we just call the keymgmt utility */
-    if (a->keymgmt != NULL && b->keymgmt != NULL)
+    if (evp_pkey_is_provided(a) && evp_pkey_is_provided(b))
         return evp_keymgmt_util_match((EVP_PKEY *)a, (EVP_PKEY *)b, selection);
 
     /*
      * At this point, one of them is provided, the other not.  This allows
      * us to compare types using legacy NIDs.
      */
-    if ((a->type != EVP_PKEY_NONE
-         && (b->keymgmt == NULL
-             || !EVP_KEYMGMT_is_a(b->keymgmt, OBJ_nid2sn(a->type))))
-        || (b->type != EVP_PKEY_NONE
-            && (a->keymgmt == NULL
-                || !EVP_KEYMGMT_is_a(a->keymgmt, OBJ_nid2sn(b->type)))))
+    if (evp_pkey_is_legacy(a)
+        && !EVP_KEYMGMT_is_a(b->keymgmt, OBJ_nid2sn(a->type)))
+        return -1;               /* not the same key type */
+    if (evp_pkey_is_legacy(b)
+        && !EVP_KEYMGMT_is_a(a->keymgmt, OBJ_nid2sn(b->type)))
         return -1;               /* not the same key type */
 
     /*
@@ -1000,7 +999,7 @@ static int get_ec_curve_name_cb(const OSSL_PARAM params[], void *arg)
 {
     const OSSL_PARAM *p = NULL;
 
-    if ((p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_EC_NAME)) != NULL)
+    if ((p = OSSL_PARAM_locate_const(params, OSSL_PKEY_PARAM_GROUP_NAME)) != NULL)
         return OSSL_PARAM_get_utf8_string(p, arg, 0);
 
     /* If there is no curve name, this is not an EC key */
@@ -1215,6 +1214,18 @@ int EVP_PKEY_supports_digest_nid(EVP_PKEY *pkey, int nid)
 int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey,
                                const unsigned char *pt, size_t ptlen)
 {
+    if (pkey->ameth == NULL) {
+        OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
+
+        if (pkey->keymgmt == NULL || pkey->keydata == NULL)
+            return 0;
+
+        params[0] =
+            OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_TLS_ENCODED_PT,
+                                              (unsigned char *)pt, ptlen);
+        return evp_keymgmt_set_params(pkey->keymgmt, pkey->keydata, params);
+    }
+
     if (ptlen > INT_MAX)
         return 0;
     if (evp_pkey_asn1_ctrl(pkey, ASN1_PKEY_CTRL_SET1_TLS_ENCPT, ptlen,
@@ -1226,6 +1237,33 @@ int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey,
 size_t EVP_PKEY_get1_tls_encodedpoint(EVP_PKEY *pkey, unsigned char **ppt)
 {
     int rv;
+
+    if (pkey->ameth == NULL) {
+        OSSL_PARAM params[2] = { OSSL_PARAM_END, OSSL_PARAM_END };
+
+        if (pkey->keymgmt == NULL || pkey->keydata == NULL)
+            return 0;
+
+        params[0] =
+            OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_TLS_ENCODED_PT,
+                                              NULL, 0);
+        if (!evp_keymgmt_get_params(pkey->keymgmt, pkey->keydata, params))
+            return 0;
+
+        *ppt = OPENSSL_malloc(params[0].return_size);
+        if (*ppt == NULL)
+            return 0;
+
+        params[0] =
+            OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_TLS_ENCODED_PT,
+                                              *ppt, params[0].return_size);
+        if (!evp_keymgmt_get_params(pkey->keymgmt, pkey->keydata, params))
+            return 0;
+
+        return params[0].return_size;
+    }
+
+
     rv = evp_pkey_asn1_ctrl(pkey, ASN1_PKEY_CTRL_GET1_TLS_ENCPT, 0, ppt);
     if (rv <= 0)
         return 0;
@@ -1764,15 +1802,13 @@ int evp_pkey_downgrade(EVP_PKEY *pk)
      * of the key data, typically the private bits.  In this case, we restore
      * the provider side internal "origin" and leave it at that.
      */
-    if (!ossl_assert(EVP_PKEY_set_type_by_keymgmt(pk, keymgmt))) {
+    if (!ossl_assert(evp_keymgmt_util_assign_pkey(pk, keymgmt, keydata))) {
         /* This should not be impossible */
         ERR_raise(ERR_LIB_EVP, ERR_R_INTERNAL_ERROR);
         return 0;
     }
-    /* EVP_PKEY_set_type_by_keymgmt() increased the refcount... */
+    /* evp_keymgmt_util_assign_pkey() increased the refcount... */
     EVP_KEYMGMT_free(keymgmt);
-    pk->keydata = keydata;
-    evp_keymgmt_util_cache_keyinfo(pk);
     return 0;     /* No downgrade, but at least the key is restored */
 }
 #endif  /* FIPS_MODULE */

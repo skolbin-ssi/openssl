@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+/* We need to use some engine deprecated APIs */
+#define OPENSSL_SUPPRESS_DEPRECATED
+
 #if !defined(_POSIX_C_SOURCE) && defined(OPENSSL_SYS_VMS)
 /*
  * On VMS, you need to define this to get the declaration of fileno().  The
@@ -74,6 +77,8 @@ typedef struct {
     unsigned long flag;
     unsigned long mask;
 } NAME_EX_TBL;
+
+static OPENSSL_CTX *app_libctx = NULL;
 
 static int set_table_opts(unsigned long *flags, const char *arg,
                           const NAME_EX_TBL * in_tbl);
@@ -332,13 +337,43 @@ static char *app_get_pass(const char *arg, int keepbio)
     return OPENSSL_strdup(tpass);
 }
 
+OPENSSL_CTX *app_get0_libctx(void)
+{
+    return app_libctx;
+}
+
+/* TODO(3.0): Make this an environment variable if required */
+const char *app_get0_propq(void)
+{
+    return NULL;
+}
+
+OPENSSL_CTX *app_create_libctx(void)
+{
+    /*
+     * Load the NULL provider into the default library context and create a
+     * library context which will then be used for any OPT_PROV options.
+     */
+    if (app_libctx == NULL) {
+
+        if (!app_provider_load(NULL, "null")) {
+            BIO_puts(bio_err, "Failed to create null provider\n");
+            return NULL;
+        }
+        app_libctx = OPENSSL_CTX_new();
+    }
+    if (app_libctx == NULL)
+        BIO_puts(bio_err, "Failed to create library context\n");
+    return app_libctx;
+}
+
 CONF *app_load_config_bio(BIO *in, const char *filename)
 {
     long errorline = -1;
     CONF *conf;
     int i;
 
-    conf = NCONF_new(NULL);
+    conf = NCONF_new_with_libctx(app_libctx, NULL);
     i = NCONF_load_bio(conf, in, &errorline);
     if (i > 0)
         return conf;
@@ -354,6 +389,7 @@ CONF *app_load_config_bio(BIO *in, const char *filename)
     else
         BIO_printf(bio_err, "config input");
 
+    CONF_modules_load(conf, NULL, 0);
     NCONF_free(conf);
     return NULL;
 }
@@ -431,6 +467,23 @@ int add_oid_section(CONF *conf)
     return 1;
 }
 
+CONF *app_load_config_modules(const char *configfile)
+{
+    CONF *conf = NULL;
+
+    if (configfile != NULL) {
+        BIO_printf(bio_err, "Using configuration from %s\n", configfile);
+
+        if ((conf = app_load_config(configfile)) == NULL)
+            return NULL;
+        if (configfile != default_config_file && !app_load_modules(conf)) {
+            NCONF_free(conf);
+            conf = NULL;
+        }
+    }
+    return conf;
+}
+
 X509 *load_cert_pass(const char *uri, int maybe_stdin,
                      const char *pass, const char *desc)
 {
@@ -438,10 +491,6 @@ X509 *load_cert_pass(const char *uri, int maybe_stdin,
 
     if (desc == NULL)
         desc = "certificate";
-    if (uri == NULL) {
-        unbuffer(stdin);
-        uri = "";
-    }
     (void)load_key_cert_crl(uri, maybe_stdin, pass, desc, NULL, &cert, NULL);
     if (cert == NULL) {
         BIO_printf(bio_err, "Unable to load %s\n", desc);
@@ -453,7 +502,7 @@ X509 *load_cert_pass(const char *uri, int maybe_stdin,
 /* the format parameter is meanwhile not needed anymore and thus ignored */
 X509 *load_cert(const char *uri, int format, const char *desc)
 {
-    return load_cert_pass(uri, 0, NULL, desc);
+    return load_cert_pass(uri, 1, NULL, desc);
 }
 
 /* the format parameter is meanwhile not needed anymore and thus ignored */
@@ -614,9 +663,11 @@ static int load_certs_crls(const char *file, int format,
     if (bio == NULL)
         return 0;
 
-    xis = PEM_X509_INFO_read_bio(bio, NULL,
-                                 (pem_password_cb *)password_callback,
-                                 &cb_data);
+    xis = PEM_X509_INFO_read_bio_with_libctx(bio, NULL,
+                                             (pem_password_cb *)password_callback,
+                                             &cb_data,
+                                             app_get0_libctx(),
+                                             app_get0_propq());
 
     BIO_free(bio);
 
@@ -671,16 +722,24 @@ static int load_certs_crls(const char *file, int format,
     return rv;
 }
 
+void app_bail_out(char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    BIO_vprintf(bio_err, fmt, args);
+    va_end(args);
+    ERR_print_errors(bio_err);
+    exit(1);
+}
+
 void* app_malloc(int sz, const char *what)
 {
     void *vp = OPENSSL_malloc(sz);
 
-    if (vp == NULL) {
-        BIO_printf(bio_err, "%s: Could not allocate %d bytes for %s\n",
-                opt_getprog(), sz, what);
-        ERR_print_errors(bio_err);
-        exit(1);
-    }
+    if (vp == NULL)
+        app_bail_out("%s: Could not allocate %d bytes for %s\n",
+                     opt_getprog(), sz, what);
     return vp;
 }
 
@@ -714,6 +773,8 @@ int load_key_cert_crl(const char *uri, int maybe_stdin,
 {
     PW_CB_DATA uidata;
     OSSL_STORE_CTX *ctx = NULL;
+    OPENSSL_CTX *libctx = app_get0_libctx();
+    const char *propq = app_get0_propq();
     int ret = 0;
     /* TODO make use of the engine reference 'eng' when loading pkeys */
 
@@ -740,11 +801,12 @@ int load_key_cert_crl(const char *uri, int maybe_stdin,
         unbuffer(stdin);
         bio = BIO_new_fp(stdin, 0);
         if (bio != NULL)
-            ctx = OSSL_STORE_attach(bio, NULL, "file", NULL,
+            ctx = OSSL_STORE_attach(bio, "file", libctx, propq,
                                     get_ui_method(), &uidata, NULL, NULL);
         uri = "<stdin>";
     } else {
-        ctx = OSSL_STORE_open(uri, get_ui_method(), &uidata, NULL, NULL);
+        ctx = OSSL_STORE_open_with_libctx(uri, libctx, propq, get_ui_method(),
+                                          &uidata, NULL, NULL);
     }
     if (ctx == NULL) {
         BIO_printf(bio_err, "Could not open file or uri %s for loading %s\n",
@@ -1048,6 +1110,8 @@ X509_STORE *setup_verify(const char *CAfile, int noCAfile,
 {
     X509_STORE *store = X509_STORE_new();
     X509_LOOKUP *lookup;
+    OPENSSL_CTX *libctx = app_get0_libctx();
+    const char *propq = app_get0_propq();
 
     if (store == NULL)
         goto end;
@@ -1057,12 +1121,16 @@ X509_STORE *setup_verify(const char *CAfile, int noCAfile,
         if (lookup == NULL)
             goto end;
         if (CAfile != NULL) {
-            if (!X509_LOOKUP_load_file(lookup, CAfile, X509_FILETYPE_PEM)) {
+            if (!X509_LOOKUP_load_file_with_libctx(lookup, CAfile,
+                                                   X509_FILETYPE_PEM,
+                                                   libctx, propq)) {
                 BIO_printf(bio_err, "Error loading file %s\n", CAfile);
                 goto end;
             }
         } else {
-            X509_LOOKUP_load_file(lookup, NULL, X509_FILETYPE_DEFAULT);
+            X509_LOOKUP_load_file_with_libctx(lookup, NULL,
+                                              X509_FILETYPE_DEFAULT,
+                                              libctx, propq);
         }
     }
 
@@ -1084,7 +1152,7 @@ X509_STORE *setup_verify(const char *CAfile, int noCAfile,
         lookup = X509_STORE_add_lookup(store, X509_LOOKUP_store());
         if (lookup == NULL)
             goto end;
-        if (!X509_LOOKUP_add_store(lookup, CAstore)) {
+        if (!X509_LOOKUP_add_store_with_libctx(lookup, CAstore, libctx, propq)) {
             if (CAstore != NULL)
                 BIO_printf(bio_err, "Error loading store URI %s\n", CAstore);
             goto end;
@@ -1152,9 +1220,8 @@ ENGINE *setup_engine_methods(const char *id, unsigned int methods, int debug)
 void release_engine(ENGINE *e)
 {
 #ifndef OPENSSL_NO_ENGINE
-    if (e != NULL)
-        /* Free our "structural" reference. */
-        ENGINE_free(e);
+    /* Free our "structural" reference. */
+    ENGINE_free(e);
 #endif
 }
 
@@ -1627,7 +1694,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         goto err;
     }
 
-    while (*cp) {
+    while (*cp != '\0') {
         char *bp = work;
         char *typestr = bp;
         unsigned char *valstr;
@@ -1636,12 +1703,12 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         nextismulti = 0;
 
         /* Collect the type */
-        while (*cp && *cp != '=')
+        while (*cp != '\0' && *cp != '=')
             *bp++ = *cp++;
         if (*cp == '\0') {
             BIO_printf(bio_err,
-                    "%s: Hit end of string before finding the '='\n",
-                    opt_getprog());
+                       "%s: Hit end of string before finding the '='\n",
+                       opt_getprog());
             goto err;
         }
         *bp++ = '\0';
@@ -1649,7 +1716,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
 
         /* Collect the value. */
         valstr = (unsigned char *)bp;
-        for (; *cp && *cp != '/'; *bp++ = *cp++) {
+        for (; *cp != '\0' && *cp != '/'; *bp++ = *cp++) {
             if (canmulti && *cp == '+') {
                 nextismulti = 1;
                 break;
@@ -1664,7 +1731,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         *bp++ = '\0';
 
         /* If not at EOS (must be + or /), move forward. */
-        if (*cp)
+        if (*cp != '\0')
             ++cp;
 
         /* Parse */
@@ -1683,6 +1750,7 @@ X509_NAME *parse_name(const char *cp, long chtype, int canmulti)
         if (!X509_NAME_add_entry_by_NID(n, nid, chtype,
                                         valstr, strlen((char *)valstr),
                                         -1, ismulti ? -1 : 0)) {
+            ERR_print_errors(bio_err);
             BIO_printf(bio_err, "%s: Error adding name attribute \"/%s=%s\"\n",
                        opt_getprog(), typestr ,valstr);
             goto err;

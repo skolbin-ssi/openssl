@@ -7,6 +7,9 @@
  * https://www.openssl.org/source/license.html
  */
 
+#include <openssl/core.h>
+#include <openssl/types.h>
+
 /* Digests */
 extern const OSSL_DISPATCH sha1_functions[];
 extern const OSSL_DISPATCH sha224_functions[];
@@ -42,6 +45,9 @@ extern const OSSL_DISPATCH aes128ecb_functions[];
 extern const OSSL_DISPATCH aes256cbc_functions[];
 extern const OSSL_DISPATCH aes192cbc_functions[];
 extern const OSSL_DISPATCH aes128cbc_functions[];
+extern const OSSL_DISPATCH aes256cbc_cts_functions[];
+extern const OSSL_DISPATCH aes192cbc_cts_functions[];
+extern const OSSL_DISPATCH aes128cbc_cts_functions[];
 extern const OSSL_DISPATCH aes256ofb_functions[];
 extern const OSSL_DISPATCH aes192ofb_functions[];
 extern const OSSL_DISPATCH aes128ofb_functions[];
@@ -252,6 +258,12 @@ extern const OSSL_DISPATCH kdf_x942_kdf_functions[];
 #endif
 extern const OSSL_DISPATCH kdf_krb5kdf_functions[];
 
+/* RNGs */
+extern const OSSL_DISPATCH test_rng_functions[];
+extern const OSSL_DISPATCH drbg_hash_functions[];
+extern const OSSL_DISPATCH drbg_hmac_functions[];
+extern const OSSL_DISPATCH drbg_ctr_functions[];
+extern const OSSL_DISPATCH crngt_functions[];
 
 /* Key management */
 extern const OSSL_DISPATCH dh_keymgmt_functions[];
@@ -346,3 +358,6 @@ extern const OSSL_DISPATCH ec_param_der_serializer_functions[];
 extern const OSSL_DISPATCH ec_priv_pem_serializer_functions[];
 extern const OSSL_DISPATCH ec_pub_pem_serializer_functions[];
 extern const OSSL_DISPATCH ec_param_pem_serializer_functions[];
+
+extern const OSSL_DISPATCH der_to_rsa_deserializer_functions[];
+extern const OSSL_DISPATCH pem_to_der_deserializer_functions[];

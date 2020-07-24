@@ -19,6 +19,7 @@
 #include "prov/implementations.h"
 #include "prov/providercommonerr.h"
 #include "prov/ciphercommon_aead.h"
+#include "prov/provider_ctx.h"
 
 #define siv_stream_update siv_cipher
 #define SIV_FLAGS AEAD_FLAGS
@@ -34,6 +35,7 @@ static void *aes_siv_newctx(void *provctx, size_t keybits, unsigned int mode,
         ctx->flags = flags;
         ctx->keylen = keybits / 8;
         ctx->hw = PROV_CIPHER_HW_aes_siv(keybits);
+        ctx->libctx = PROV_LIBRARY_CONTEXT_OF(provctx);
     }
     return ctx;
 }
@@ -46,6 +48,22 @@ static void aes_siv_freectx(void *vctx)
         ctx->hw->cleanup(ctx);
         OPENSSL_clear_free(ctx,  sizeof(*ctx));
     }
+}
+
+static void *siv_dupctx(void *vctx)
+{
+    PROV_AES_SIV_CTX *in = (PROV_AES_SIV_CTX *)vctx;
+    PROV_AES_SIV_CTX *ret = OPENSSL_malloc(sizeof(*ret));
+
+    if (ret == NULL) {
+        ERR_raise(ERR_LIB_PROV, ERR_R_MALLOC_FAILURE);
+        return NULL;
+    }
+    if (!in->hw->dupctx(in, ret)) {
+        OPENSSL_free(ret);
+        ret = NULL;
+    }
+    return ret;
 }
 
 static int siv_init(void *vctx, const unsigned char *key, size_t keylen,
@@ -204,13 +222,13 @@ static const OSSL_PARAM *aes_siv_settable_ctx_params(void)
 }
 
 #define IMPLEMENT_cipher(alg, lc, UCMODE, flags, kbits, blkbits, ivbits)       \
-static OSSL_OP_cipher_get_params_fn alg##_##kbits##_##lc##_get_params;         \
+static OSSL_FUNC_cipher_get_params_fn alg##_##kbits##_##lc##_get_params;       \
 static int alg##_##kbits##_##lc##_get_params(OSSL_PARAM params[])              \
 {                                                                              \
     return cipher_generic_get_params(params, EVP_CIPH_##UCMODE##_MODE,         \
                                      flags, 2*kbits, blkbits, ivbits);         \
 }                                                                              \
-static OSSL_OP_cipher_newctx_fn alg##kbits##lc##_newctx;                       \
+static OSSL_FUNC_cipher_newctx_fn alg##kbits##lc##_newctx;                     \
 static void * alg##kbits##lc##_newctx(void *provctx)                           \
 {                                                                              \
     return alg##_##lc##_newctx(provctx, 2*kbits, EVP_CIPH_##UCMODE##_MODE,     \
@@ -219,6 +237,7 @@ static void * alg##kbits##lc##_newctx(void *provctx)                           \
 const OSSL_DISPATCH alg##kbits##lc##_functions[] = {                           \
     { OSSL_FUNC_CIPHER_NEWCTX, (void (*)(void))alg##kbits##lc##_newctx },      \
     { OSSL_FUNC_CIPHER_FREECTX, (void (*)(void))alg##_##lc##_freectx },        \
+    { OSSL_FUNC_CIPHER_DUPCTX, (void (*)(void)) lc##_dupctx },                 \
     { OSSL_FUNC_CIPHER_ENCRYPT_INIT, (void (*)(void)) lc##_einit },            \
     { OSSL_FUNC_CIPHER_DECRYPT_INIT, (void (*)(void)) lc##_dinit },            \
     { OSSL_FUNC_CIPHER_UPDATE, (void (*)(void)) lc##_stream_update },          \

@@ -29,7 +29,7 @@ used internally by the FIPS module during its initialization.
 
 The following options are supported. They should all appear in a section
 whose name is identified by the B<fips> option in the B<providers>
-section, as desribed in L<config(5)/Provider Configuration Module>.
+section, as described in L<config(5)/Provider Configuration Module>.
 
 =over 4
 
@@ -59,7 +59,7 @@ It is written-to at the same time as B<install-status> is updated.
 
 For example:
 
- [fips_install]
+ [fips_sect]
  install-version = 1
  module-mac = 41:D0:FA:C2:5D:41:75:CD:7D:C3:90:55:6F:A4:DC
  install-mac = FE:10:13:5A:D3:B4:C7:82:1B:1E:17:4C:AC:84:0C
@@ -71,7 +71,7 @@ L<config(5)>
 
 =head1 COPYRIGHT
 
-Copyright 2019 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

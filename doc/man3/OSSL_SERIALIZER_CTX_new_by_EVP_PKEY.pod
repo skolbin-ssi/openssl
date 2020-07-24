@@ -31,7 +31,7 @@ OSSL_SERIALIZER_Parameters_TO_TEXT_PQ
  int OSSL_SERIALIZER_CTX_set_passphrase(OSSL_SERIALIZER_CTX *ctx,
                                         const unsigned char *kstr,
                                         size_t klen);
- int OSSL_SERIALIZER_CTX_set_passphrase_cb(OSSL_SERIALIZER_CTX *ctx, int enc,
+ int OSSL_SERIALIZER_CTX_set_passphrase_cb(OSSL_SERIALIZER_CTX *ctx,
                                            pem_password_cb *cb, void *cbarg);
  int OSSL_SERIALIZER_CTX_set_passphrase_ui(OSSL_SERIALIZER_CTX *ctx,
                                            const UI_METHOD *ui_method,
@@ -121,7 +121,7 @@ name, thus making for the naming pattern
 B<OSSL_SERIALIZER_CTX_new_by_I<TYPE>>() when new types are handled.
 
 B<PUBKEY>, B<PrivateKey> and B<Parameters> in the macro names match
-the B<I<TYPE>> part of of B<PEM_write_bio_I<TYPE>> functions as well
+the B<I<TYPE>> part of B<PEM_write_bio_I<TYPE>> functions as well
 as B<i2d_I<TYPE>_bio> functions.
 
 =head1 SEE ALSO

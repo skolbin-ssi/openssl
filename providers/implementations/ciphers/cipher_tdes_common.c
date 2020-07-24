@@ -48,6 +48,7 @@ void tdes_freectx(void *vctx)
 {
     PROV_TDES_CTX *ctx = (PROV_TDES_CTX *)vctx;
 
+    cipher_generic_reset_ctx((PROV_CIPHER_CTX *)vctx);
     OPENSSL_clear_free(ctx,  sizeof(*ctx));
 }
 
@@ -56,6 +57,7 @@ static int tdes_init(void *vctx, const unsigned char *key, size_t keylen,
 {
     PROV_CIPHER_CTX *ctx = (PROV_CIPHER_CTX *)vctx;
 
+    ctx->num = 0;
     ctx->enc = enc;
 
     if (iv != NULL) {
