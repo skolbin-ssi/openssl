@@ -34,6 +34,8 @@ plan skip_all => "These tests are not supported in a no-ec build"
 
 plan skip_all => "Tests involving CMP server not available on Windows or VMS"
     if $^O =~ /^(VMS|MSWin32)$/;
+plan skip_all => "Tests involving CMP server not available in cross-compile builds"
+    if defined $ENV{EXE_SHELL};
 plan skip_all => "Tests involving CMP server require 'kill' command"
     unless `which kill`;
 plan skip_all => "Tests involving CMP server require 'lsof' command"
@@ -215,23 +217,27 @@ indir data_dir() => sub {
     foreach my $server_name (@server_configurations) {
         $server_name = chop_dblquot($server_name);
         load_config($server_name, $server_name);
-        my $pid;
-        if ($server_name eq "Mock") {
-            indir "Mock" => sub {
-                $pid = start_mock_server("");
-                die "Cannot start or find the started CMP mock server" unless $pid;
+      SKIP:
+        {
+            my $pid;
+            if ($server_name eq "Mock") {
+                indir "Mock" => sub {
+                    $pid = start_mock_server("");
+                    skip "Cannot start or find the started CMP mock server",
+                        scalar @all_aspects unless $pid;
+                }
             }
-        }
-        foreach my $aspect (@all_aspects) {
-            $aspect = chop_dblquot($aspect);
-            next if $server_name eq "Mock" && $aspect eq "certstatus";
-            load_config($server_name, $aspect); # update with any aspect-specific settings
-            indir $server_name => sub {
-                my $tests = load_tests($server_name, $aspect);
-                test_cmp_cli_aspect($server_name, $aspect, $tests);
+            foreach my $aspect (@all_aspects) {
+                $aspect = chop_dblquot($aspect);
+                next if $server_name eq "Mock" && $aspect eq "certstatus";
+                load_config($server_name, $aspect); # update with any aspect-specific settings
+                indir $server_name => sub {
+                    my $tests = load_tests($server_name, $aspect);
+                    test_cmp_cli_aspect($server_name, $aspect, $tests);
+                };
             };
-        };
-        stop_mock_server($pid) if $pid;
+            stop_mock_server($pid) if $pid;
+        }
     };
 };
 

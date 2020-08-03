@@ -38,9 +38,11 @@ OSSL_FUNC_keymgmt_import_fn *ossl_prov_get_keymgmt_import(const OSSL_DISPATCH *f
 OSSL_FUNC_keymgmt_export_fn *ossl_prov_get_keymgmt_export(const OSSL_DISPATCH *fns);
 
 OSSL_FUNC_keymgmt_new_fn *ossl_prov_get_keymgmt_rsa_new(void);
+OSSL_FUNC_keymgmt_new_fn *ossl_prov_get_keymgmt_rsapss_new(void);
 OSSL_FUNC_keymgmt_free_fn *ossl_prov_get_keymgmt_rsa_free(void);
 OSSL_FUNC_keymgmt_import_fn *ossl_prov_get_keymgmt_rsa_import(void);
 OSSL_FUNC_keymgmt_export_fn *ossl_prov_get_keymgmt_rsa_export(void);
+OSSL_FUNC_keymgmt_export_fn *ossl_prov_get_keymgmt_rsapss_export(void);
 OSSL_FUNC_keymgmt_new_fn *ossl_prov_get_keymgmt_dh_new(void);
 OSSL_FUNC_keymgmt_free_fn *ossl_prov_get_keymgmt_dh_free(void);
 OSSL_FUNC_keymgmt_import_fn *ossl_prov_get_keymgmt_dh_import(void);
@@ -168,5 +170,5 @@ int ossl_prov_read_pem(PROV_CTX *provctx, OSSL_CORE_BIO *cin,
 
 int ossl_prov_der_from_p8(unsigned char **new_der, long *new_der_len,
                           unsigned char *input_der, long input_der_len,
-                          struct pkcs8_encrypt_ctx_st *ctx);
+                          OSSL_PASSPHRASE_CALLBACK *pw_cb, void *pw_cbarg);
 
