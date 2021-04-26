@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
@@ -80,7 +80,7 @@ static int match(const char *t[], const char m[], size_t m_len)
     return 0;
 }
 
-static int parse_name(OPENSSL_CTX *ctx, const char *t[], int create,
+static int parse_name(OSSL_LIB_CTX *ctx, const char *t[], int create,
                       OSSL_PROPERTY_IDX *idx)
 {
     char name[100];
@@ -187,7 +187,7 @@ static int parse_oct(const char *t[], PROPERTY_DEFINITION *res)
     return 1;
 }
 
-static int parse_string(OPENSSL_CTX *ctx, const char *t[], char delim,
+static int parse_string(OSSL_LIB_CTX *ctx, const char *t[], char delim,
                         PROPERTY_DEFINITION *res, const int create)
 {
     char v[1000];
@@ -218,7 +218,7 @@ static int parse_string(OPENSSL_CTX *ctx, const char *t[], char delim,
     return !err;
 }
 
-static int parse_unquoted(OPENSSL_CTX *ctx, const char *t[],
+static int parse_unquoted(OSSL_LIB_CTX *ctx, const char *t[],
                           PROPERTY_DEFINITION *res, const int create)
 {
     char v[1000];
@@ -251,7 +251,7 @@ static int parse_unquoted(OPENSSL_CTX *ctx, const char *t[],
     return !err;
 }
 
-static int parse_value(OPENSSL_CTX *ctx, const char *t[],
+static int parse_value(OSSL_LIB_CTX *ctx, const char *t[],
                        PROPERTY_DEFINITION *res, int create)
 {
     const char *s = *t;
@@ -326,7 +326,7 @@ static OSSL_PROPERTY_LIST *stack_to_property_list(STACK_OF(PROPERTY_DEFINITION)
     return r;
 }
 
-OSSL_PROPERTY_LIST *ossl_parse_property(OPENSSL_CTX *ctx, const char *defn)
+OSSL_PROPERTY_LIST *ossl_parse_property(OSSL_LIB_CTX *ctx, const char *defn)
 {
     PROPERTY_DEFINITION *prop = NULL;
     OSSL_PROPERTY_LIST *res = NULL;
@@ -385,7 +385,8 @@ err:
     return res;
 }
 
-OSSL_PROPERTY_LIST *ossl_parse_query(OPENSSL_CTX *ctx, const char *s)
+OSSL_PROPERTY_LIST *ossl_parse_query(OSSL_LIB_CTX *ctx, const char *s,
+                                     int create_values)
 {
     STACK_OF(PROPERTY_DEFINITION) *sk;
     OSSL_PROPERTY_LIST *res = NULL;
@@ -425,7 +426,7 @@ OSSL_PROPERTY_LIST *ossl_parse_query(OPENSSL_CTX *ctx, const char *s)
             prop->v.str_val = ossl_property_true;
             goto skip_value;
         }
-        if (!parse_value(ctx, &s, prop, 0))
+        if (!parse_value(ctx, &s, prop, create_values))
             prop->type = PROPERTY_TYPE_VALUE_UNDEFINED;
 
 skip_value:
@@ -453,7 +454,7 @@ int ossl_property_has_optional(const OSSL_PROPERTY_LIST *query)
     return query->has_optional ? 1 : 0;
 }
 
-int ossl_property_is_enabled(OPENSSL_CTX *ctx,  const char *property_name,
+int ossl_property_is_enabled(OSSL_LIB_CTX *ctx,  const char *property_name,
                              const OSSL_PROPERTY_LIST *prop_list)
 {
     int i;
@@ -590,15 +591,15 @@ OSSL_PROPERTY_LIST *ossl_property_merge(const OSSL_PROPERTY_LIST *a,
     return r;
 }
 
-int ossl_property_parse_init(OPENSSL_CTX *ctx)
+int ossl_property_parse_init(OSSL_LIB_CTX *ctx)
 {
     static const char *const predefined_names[] = {
         "provider",     /* Name of provider (default, legacy, fips) */
         "version",      /* Version number of this provider */
         "fips",         /* FIPS validated or FIPS supporting algorithm */
-        "format",       /* output format for serializers */
-        "type",         /* output type for serializers */
-        "input",        /* input type for deserializers */
+        "output",       /* Output type for encoders */
+        "input",        /* Input type for decoders */
+        "structure",    /* Structure name for encoders and decoders */
     };
     size_t i;
 

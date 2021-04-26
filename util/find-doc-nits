@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2002-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -91,14 +91,22 @@ my %mandatory_sections = (
                          );
 
 # Symbols that we ignored.
-# They are internal macros that we currently don't document
+# They are reserved macros that we currently don't document
 my $ignored = qr/(?| ^i2d_
                  |   ^d2i_
                  |   ^DEPRECATEDIN
+                 |   ^OSSL_DEPRECATED
                  |   \Q_fnsig(3)\E$
                  |   ^IMPLEMENT_
                  |   ^_?DECLARE_
+                 |   ^sk_
+                 |   ^SKM_DEFINE_STACK_OF_INTERNAL
+                 |   ^lh_
+                 |   ^DEFINE_LHASH_OF_INTERNAL
                  )/x;
+
+# A common regexp for C symbol names
+my $C_symbol = qr/\b[[:alpha:]][_[:alnum:]]*\b/;
 
 # Collect all POD files, both internal and public, and regardless of location
 # We collect them in a hash table with each file being a key, so we can attach
@@ -363,27 +371,27 @@ sub name_synopsis {
         if ( $line =~ /env (\S*)=/ ) {
             # environment variable env NAME=...
             $sym = $1;
-        } elsif ( $line =~ /typedef.*\(\*?(\S+)\)\s*\(/ ) {
+        } elsif ( $line =~ /typedef.*\(\*?($C_symbol)\)\s*\(/ ) {
             # a callback function pointer: typedef ... (*NAME)(...
             # a callback function signature: typedef ... (NAME)(...
             $sym = $1;
-        } elsif ( $line =~ /typedef.* (\S+)\s*\(/ ) {
+        } elsif ( $line =~ /typedef.*($C_symbol)\s*\(/ ) {
             # a callback function signature: typedef ... NAME(...
             $sym = $1;
-        } elsif ( $line =~ /typedef.* (\S+);/ ) {
+        } elsif ( $line =~ /typedef.*($C_symbol);/ ) {
             # a simple typedef: typedef ... NAME;
             $is_prototype = 0;
             $sym = $1;
-        } elsif ( $line =~ /enum (\S*) \{/ ) {
+        } elsif ( $line =~ /enum ($C_symbol) \{/ ) {
             # an enumeration: enum ... {
             $sym = $1;
-        } elsif ( $line =~ /#\s*(?:define|undef) ([A-Za-z0-9_]+)/ ) {
+        } elsif ( $line =~ /#\s*(?:define|undef) ($C_symbol)/ ) {
             $is_prototype = 0;
             $sym = $1;
-        } elsif ( $line =~ /^[^\(]*?\(\*([A-Za-z0-9_]+)\s*\(/ ) {
+        } elsif ( $line =~ /^[^\(]*?\(\*($C_symbol)\s*\(/ ) {
             # a function returning a function pointer: TYPE (*NAME(args))(args)
             $sym = $1;
-        } elsif ( $line =~ /^[^\(]*?([A-Za-z0-9_]+)\s*\(/ ) {
+        } elsif ( $line =~ /^[^\(]*?($C_symbol)\s*\(/ ) {
             # a simple function declaration
             $sym = $1;
         }
@@ -601,6 +609,7 @@ my %preferred_words = (
     'bitmask'       => 'bit mask',
     'builtin'       => 'built-in',
    #'epoch'         => 'Epoch', # handled specially, below
+    'fall-back'     => 'fallback',
     'file name'     => 'filename',
     'file system'   => 'filesystem',
     'host name'     => 'hostname',
@@ -770,7 +779,8 @@ sub check {
 
     open my $OUT, '>', $temp
         or die "Can't open $temp, $!";
-    podchecker($filename, $OUT);
+    err($id, "POD errors")
+        if podchecker($filename, $OUT) != 0;
     close $OUT;
     open $OUT, '<', $temp
         or die "Can't read $temp, $!";
@@ -876,7 +886,7 @@ sub checkstate () {
 
         err("$_ is supposedly public but is documented as internal")
             if ( $declared_public && $name_map{$_} =~ /\/internal\// );
-        err("$_ is supposedly internal but is documented as public")
+        err("$_ is supposedly internal (maybe missing from other.syms) but is documented as public")
             if ( $declared_internal && $name_map{$_} !~ /\/internal\// );
     }
 }
@@ -1164,7 +1174,8 @@ if ( $opt_n ) {
     # If not given args, check that all man1 commands are named properly.
     if ( scalar @ARGV == 0 ) {
         foreach ( files(TAGS => [ 'public_manual', 'man1' ]) ) {
-            next if /CA.pl/ || /openssl\.pod/ || /tsget\.pod/;
+            next if /openssl\.pod/
+                || /CA\.pl/ || /tsget\.pod/; # these commands are special cases
             err("$_ doesn't start with openssl-") unless /openssl-/;
         }
     }

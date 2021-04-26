@@ -138,6 +138,21 @@ extern "C" {
 #  endif
 # endif
 
+/* ---------------------------- HP NonStop -------------------------------- */
+# ifdef __TANDEM
+#  ifdef _STRING
+#   include <strings.h>
+#  endif
+# define OPENSSL_USE_BUILD_DATE
+# if defined(OPENSSL_THREADS) && defined(_SPT_MODEL_)
+#  define  SPT_THREAD_SIGNAL 1
+#  define  SPT_THREAD_AWARE 1
+#  include <spthread.h>
+# elif defined(OPENSSL_THREADS) && defined(_PUT_MODEL_)
+#  include <pthread.h>
+# endif
+# endif
+
 /**
  * That's it for OS-specific stuff
  *****************************************************************************/
@@ -259,7 +274,8 @@ typedef unsigned __int64 uint64_t;
 #  define ossl_inline inline
 # endif
 
-# if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+# if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && \
+     !defined(__cplusplus) 
 #  define ossl_noreturn _Noreturn
 # elif defined(__GNUC__) && __GNUC__ >= 2
 #  define ossl_noreturn __attribute__((noreturn))

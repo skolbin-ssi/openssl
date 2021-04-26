@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -28,6 +28,13 @@ int f(void) /*
         /* leading comment has same indentation as normal code */ stmt;
         /* entire-line comment may have same indent as normal code */
     }
+
+    for (;;)
+        ;
+    for (i = 0;;)
+        ;
+    for (i = 0; i < 1;)
+        ;
 
 #if X
     if (1) /* bad style: just part of control structure depends on #if */
@@ -235,9 +242,9 @@ struct s_type
 
 #define X  1          + 1
 #define Y  /* .. */ 2 + 2
-#define Z  3          + 3
+#define Z  3          + 3 * (*a++)
 
-static varref cmp_vars[] = { /* comment */
+static varref cmp_vars[] = { /* comment.  comment?  comment!  */
     {&opt_config}, {&opt_section},
 
     {&opt_server}, {&opt_proxy}, {&opt_path},
@@ -275,10 +282,17 @@ static void *fun(void)
         /* comment */
         return NULL;
 
+label0:
+ label1: /* allow special indent 1 for label at outermost level in body */
     do {
+    label2:
         size_t available_len, data_len;
         const char *curr = txt, *next = txt;
         char *tmp;
+
+        {
+        label3:
+        }
     } while (1);
 
     char *intraline_string_with_comment_delimiters_and_dbl_space = "1  /*1";

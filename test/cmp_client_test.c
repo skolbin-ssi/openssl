@@ -1,5 +1,5 @@
 /*
- * Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2007-2021 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright Nokia 2007-2019
  * Copyright Siemens AG 2015-2019
  *
@@ -9,14 +9,11 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "cmp_testlib.h"
+#include "helpers/cmp_testlib.h"
 
 #include "apps/cmp_mock_srv.h"
 
 #ifndef NDEBUG /* tests need mock server, which is available only if !NDEBUG */
-
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(OSSL_CMP_ITAV)
 
 static const char *server_key_f;
 static const char *server_cert_f;
@@ -32,6 +29,9 @@ typedef struct test_fixture {
     int expected;
     STACK_OF(X509) *caPubs;
 } CMP_SES_TEST_FIXTURE;
+
+static OSSL_LIB_CTX *libctx = NULL;
+static OSSL_PROVIDER *default_null_provider = NULL, *provider = NULL;
 
 static EVP_PKEY *server_key = NULL;
 static X509 *server_cert = NULL;
@@ -62,7 +62,7 @@ static CMP_SES_TEST_FIXTURE *set_up(const char *const test_case_name)
     if (!TEST_ptr(fixture = OPENSSL_zalloc(sizeof(*fixture))))
         return NULL;
     fixture->test_case_name = test_case_name;
-    if (!TEST_ptr(fixture->srv_ctx = ossl_cmp_mock_srv_new())
+    if (!TEST_ptr(fixture->srv_ctx = ossl_cmp_mock_srv_new(libctx, NULL))
             || !OSSL_CMP_SRV_CTX_set_accept_unprotected(fixture->srv_ctx, 1)
             || !ossl_cmp_mock_srv_set1_certOut(fixture->srv_ctx, client_cert)
             || (srv_cmp_ctx =
@@ -70,7 +70,7 @@ static CMP_SES_TEST_FIXTURE *set_up(const char *const test_case_name)
             || !OSSL_CMP_CTX_set1_cert(srv_cmp_ctx, server_cert)
             || !OSSL_CMP_CTX_set1_pkey(srv_cmp_ctx, server_key))
         goto err;
-    if (!TEST_ptr(fixture->cmp_ctx = ctx = OSSL_CMP_CTX_new())
+    if (!TEST_ptr(fixture->cmp_ctx = ctx = OSSL_CMP_CTX_new(libctx, NULL))
             || !OSSL_CMP_CTX_set_log_cb(fixture->cmp_ctx, print_to_bio_out)
             || !OSSL_CMP_CTX_set_transfer_cb(ctx, OSSL_CMP_CTX_server_perform)
             || !OSSL_CMP_CTX_set_transfer_cb_arg(ctx, fixture->srv_ctx)
@@ -92,7 +92,7 @@ static CMP_SES_TEST_FIXTURE *set_up(const char *const test_case_name)
 static int execute_exec_RR_ses_test(CMP_SES_TEST_FIXTURE *fixture)
 {
     return TEST_int_eq(fixture->expected,
-                       OSSL_CMP_exec_RR_ses(fixture->cmp_ctx) == client_cert);
+                       OSSL_CMP_exec_RR_ses(fixture->cmp_ctx) == 1);
 }
 
 static int execute_exec_GENM_ses_test(CMP_SES_TEST_FIXTURE *fixture)
@@ -226,7 +226,7 @@ static int test_exec_P10CR_ses(void)
     SETUP_TEST_FIXTURE(CMP_SES_TEST_FIXTURE, set_up);
     fixture->req_type = OSSL_CMP_P10CR;
     fixture->expected = 1;
-    if (!TEST_ptr(req = load_csr(pkcs10_f))
+    if (!TEST_ptr(req = load_csr_der(pkcs10_f))
             || !TEST_true(OSSL_CMP_CTX_set1_p10CSR(fixture->cmp_ctx, req))) {
         tear_down(fixture);
         fixture = NULL;
@@ -343,8 +343,12 @@ void cleanup_tests(void)
     EVP_PKEY_free(server_key);
     X509_free(client_cert);
     EVP_PKEY_free(client_key);
+    OSSL_LIB_CTX_free(libctx);
     return;
 }
+
+# define USAGE "server.key server.crt client.key client.crt client.csr module_name [module_conf_file]\n"
+OPT_TEST_DECLARE_USAGE(USAGE)
 
 int setup_tests(void)
 {
@@ -358,15 +362,18 @@ int setup_tests(void)
             || !TEST_ptr(client_key_f = test_get_argument(2))
             || !TEST_ptr(client_cert_f = test_get_argument(3))
             || !TEST_ptr(pkcs10_f = test_get_argument(4))) {
-        TEST_error("usage: cmp_client_test server.key server.crt client.key client.crt client.csr\n");
+        TEST_error("usage: cmp_client_test %s", USAGE);
         return 0;
     }
 
-    if (!TEST_ptr(server_key = load_pem_key(server_key_f))
-            || !TEST_ptr(server_cert = load_pem_cert(server_cert_f))
-            || !TEST_ptr(client_key = load_pem_key(client_key_f))
-            || !TEST_ptr(client_cert = load_pem_cert(client_cert_f))
-            || !TEST_int_eq(1, RAND_bytes(ref, sizeof(ref)))) {
+    if (!test_arg_libctx(&libctx, &default_null_provider, &provider, 5, USAGE))
+        return 0;
+
+    if (!TEST_ptr(server_key = load_pkey_pem(server_key_f, libctx))
+            || !TEST_ptr(server_cert = load_cert_pem(server_cert_f, libctx))
+            || !TEST_ptr(client_key = load_pkey_pem(client_key_f, libctx))
+            || !TEST_ptr(client_cert = load_cert_pem(client_cert_f, libctx))
+            || !TEST_int_eq(1, RAND_bytes_ex(libctx, ref, sizeof(ref)))) {
         cleanup_tests();
         return 0;
     }

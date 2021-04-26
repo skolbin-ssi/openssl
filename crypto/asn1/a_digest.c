@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -33,11 +33,11 @@ int ASN1_digest(i2d_of_void *i2d, const EVP_MD *type, char *data,
 
     inl = i2d(data, NULL);
     if (inl <= 0) {
-        ASN1err(ASN1_F_ASN1_DIGEST, ERR_R_INTERNAL_ERROR);
+        ERR_raise(ERR_LIB_ASN1, ERR_R_INTERNAL_ERROR);
         return 0;
     }
     if ((str = OPENSSL_malloc(inl)) == NULL) {
-        ASN1err(ASN1_F_ASN1_DIGEST, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_ASN1, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     p = str;
@@ -53,17 +53,16 @@ int ASN1_digest(i2d_of_void *i2d, const EVP_MD *type, char *data,
 
 #endif
 
-int asn1_item_digest_with_libctx(const ASN1_ITEM *it, const EVP_MD *md,
-                                 void *asn, unsigned char *data,
-                                 unsigned int *len, OPENSSL_CTX *libctx,
-                                 const char *propq)
+int ossl_asn1_item_digest_ex(const ASN1_ITEM *it, const EVP_MD *md, void *asn,
+                             unsigned char *data, unsigned int *len,
+                             OSSL_LIB_CTX *libctx, const char *propq)
 {
     int i, ret = 0;
     unsigned char *str = NULL;
     EVP_MD *fetched_md = (EVP_MD *)md;
 
     i = ASN1_item_i2d(asn, &str, it);
-    if (str == NULL)
+    if (i < 0 || str == NULL)
         return 0;
 
     if (EVP_MD_provider(md) == NULL) {
@@ -76,8 +75,8 @@ int asn1_item_digest_with_libctx(const ASN1_ITEM *it, const EVP_MD *md,
 #endif
             fetched_md = EVP_MD_fetch(libctx, EVP_MD_name(md), propq);
     }
-     if (fetched_md == NULL)
-         goto err;
+    if (fetched_md == NULL)
+        goto err;
 
     ret = EVP_Digest(str, i, data, len, fetched_md, NULL);
 err:
@@ -90,6 +89,6 @@ err:
 int ASN1_item_digest(const ASN1_ITEM *it, const EVP_MD *md, void *asn,
                      unsigned char *data, unsigned int *len)
 {
-    return asn1_item_digest_with_libctx(it, md, asn, data, len, NULL, NULL);
+    return ossl_asn1_item_digest_ex(it, md, asn, data, len, NULL, NULL);
 }
 

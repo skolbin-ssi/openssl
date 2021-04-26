@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -17,9 +17,6 @@
 #include "crypto/asn1.h"
 #include "crypto/x509.h"
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(ASN1_OBJECT)
-
 #ifndef OPENSSL_NO_STDIO
 int X509_print_fp(FILE *fp, X509 *x)
 {
@@ -33,7 +30,7 @@ int X509_print_ex_fp(FILE *fp, X509 *x, unsigned long nmflag,
     int ret;
 
     if ((b = BIO_new(BIO_s_file())) == NULL) {
-        X509err(X509_F_X509_PRINT_EX_FP, ERR_R_BUF_LIB);
+        ERR_raise(ERR_LIB_X509, ERR_R_BUF_LIB);
         return 0;
     }
     BIO_set_fp(b, fp, BIO_NOCLOSE);
@@ -143,11 +140,11 @@ int X509_print_ex(BIO *bp, X509 *x, unsigned long nmflags,
             goto err;
         if (BIO_write(bp, "            Not Before: ", 24) <= 0)
             goto err;
-        if (!ASN1_TIME_print(bp, X509_get0_notBefore(x)))
+        if (ossl_asn1_time_print_ex(bp, X509_get0_notBefore(x)) == 0)
             goto err;
         if (BIO_write(bp, "\n            Not After : ", 25) <= 0)
             goto err;
-        if (!ASN1_TIME_print(bp, X509_get0_notAfter(x)))
+        if (ossl_asn1_time_print_ex(bp, X509_get0_notAfter(x)) == 0)
             goto err;
         if (BIO_write(bp, "\n", 1) <= 0)
             goto err;
@@ -200,9 +197,10 @@ int X509_print_ex(BIO *bp, X509 *x, unsigned long nmflags,
         }
     }
 
-    if (!(cflag & X509_FLAG_NO_EXTENSIONS))
-        X509V3_extensions_print(bp, "X509v3 extensions",
-                                X509_get0_extensions(x), cflag, 8);
+    if (!(cflag & X509_FLAG_NO_EXTENSIONS)
+        && !X509V3_extensions_print(bp, "X509v3 extensions",
+                                    X509_get0_extensions(x), cflag, 8))
+        goto err;
 
     if (!(cflag & X509_FLAG_NO_SIGDUMP)) {
         const X509_ALGOR *sig_alg;
@@ -230,7 +228,10 @@ int X509_ocspid_print(BIO *bp, X509 *x)
     unsigned char SHA1md[SHA_DIGEST_LENGTH];
     ASN1_BIT_STRING *keybstr;
     const X509_NAME *subj;
+    EVP_MD *md = NULL;
 
+    if (x == NULL || bp == NULL)
+        return 0;
     /*
      * display the hash of the subject as it would appear in OCSP requests
      */
@@ -238,11 +239,16 @@ int X509_ocspid_print(BIO *bp, X509 *x)
         goto err;
     subj = X509_get_subject_name(x);
     derlen = i2d_X509_NAME(subj, NULL);
+    if (derlen <= 0)
+        goto err;
     if ((der = dertmp = OPENSSL_malloc(derlen)) == NULL)
         goto err;
     i2d_X509_NAME(subj, &dertmp);
 
-    if (!EVP_Digest(der, derlen, SHA1md, NULL, EVP_sha1(), NULL))
+    md = EVP_MD_fetch(x->libctx, SN_sha1, x->propq);
+    if (md == NULL)
+        goto err;
+    if (!EVP_Digest(der, derlen, SHA1md, NULL, md, NULL))
         goto err;
     for (i = 0; i < SHA_DIGEST_LENGTH; i++) {
         if (BIO_printf(bp, "%02X", SHA1md[i]) <= 0)
@@ -263,18 +269,19 @@ int X509_ocspid_print(BIO *bp, X509 *x)
         goto err;
 
     if (!EVP_Digest(ASN1_STRING_get0_data(keybstr),
-                    ASN1_STRING_length(keybstr), SHA1md, NULL, EVP_sha1(),
-                    NULL))
+                    ASN1_STRING_length(keybstr), SHA1md, NULL, md, NULL))
         goto err;
     for (i = 0; i < SHA_DIGEST_LENGTH; i++) {
         if (BIO_printf(bp, "%02X", SHA1md[i]) <= 0)
             goto err;
     }
     BIO_printf(bp, "\n");
+    EVP_MD_free(md);
 
     return 1;
  err:
     OPENSSL_free(der);
+    EVP_MD_free(md);
     return 0;
 }
 
@@ -388,7 +395,7 @@ int X509_aux_print(BIO *out, X509 *x, int indent)
  * Helper functions for improving certificate verification error diagnostics
  */
 
-int x509_print_ex_brief(BIO *bio, X509 *cert, unsigned long neg_cflags)
+int ossl_x509_print_ex_brief(BIO *bio, X509 *cert, unsigned long neg_cflags)
 {
     unsigned long flags = ASN1_STRFLGS_RFC2253 | ASN1_STRFLGS_ESC_QUOTE |
         XN_FLAG_SEP_CPLUS_SPC | XN_FLAG_FN_SN;
@@ -415,7 +422,8 @@ int x509_print_ex_brief(BIO *bio, X509 *cert, unsigned long neg_cflags)
     if (X509_cmp_current_time(X509_get0_notAfter(cert)) < 0)
         if (BIO_printf(bio, "        no more valid\n") <= 0)
             return 0;
-    return X509_print_ex(bio, cert, flags, ~(neg_cflags));
+    return X509_print_ex(bio, cert, flags,
+                         ~neg_cflags & ~X509_FLAG_EXTENSIONS_ONLY_KID);
 }
 
 static int print_certs(BIO *bio, const STACK_OF(X509) *certs)
@@ -427,8 +435,15 @@ static int print_certs(BIO *bio, const STACK_OF(X509) *certs)
 
     for (i = 0; i < sk_X509_num(certs); i++) {
         X509 *cert = sk_X509_value(certs, i);
-        if (cert != NULL && !x509_print_ex_brief(bio, cert, 0))
-            return 0;
+
+        if (cert != NULL) {
+            if (!ossl_x509_print_ex_brief(bio, cert, 0))
+                return 0;
+            if (!X509V3_extensions_print(bio, NULL,
+                                         X509_get0_extensions(cert),
+                                         X509_FLAG_EXTENSIONS_ONLY_KID, 8))
+                return 0;
+            }
     }
     return 1;
 }
@@ -489,8 +504,8 @@ int X509_STORE_CTX_print_verify_cb(int ok, X509_STORE_CTX *ctx)
         }
 
         BIO_printf(bio, "Failure for:\n");
-        x509_print_ex_brief(bio, X509_STORE_CTX_get_current_cert(ctx),
-                            X509_FLAG_NO_EXTENSIONS);
+        ossl_x509_print_ex_brief(bio, X509_STORE_CTX_get_current_cert(ctx),
+                                 X509_FLAG_NO_EXTENSIONS);
         if (cert_error == X509_V_ERR_CERT_UNTRUSTED
                 || cert_error == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT
                 || cert_error == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN
@@ -503,7 +518,7 @@ int X509_STORE_CTX_print_verify_cb(int ok, X509_STORE_CTX *ctx)
             BIO_printf(bio, "Certs in trust store:\n");
             print_store_certs(bio, X509_STORE_CTX_get0_store(ctx));
         }
-        X509err(0, X509_R_CERTIFICATE_VERIFICATION_FAILED);
+        ERR_raise(ERR_LIB_X509, X509_R_CERTIFICATE_VERIFICATION_FAILED);
         ERR_add_error_mem_bio("\n", bio);
         BIO_free(bio);
     }

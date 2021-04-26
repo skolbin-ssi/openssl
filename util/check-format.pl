@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
 # Copyright Siemens AG 2019-2020
 #
 # Licensed under the Apache License 2.0 (the "License").
@@ -16,6 +16,10 @@
 #                   [-s|--sloppy-spc] [-c|--sloppy-cmt] [-m|--sloppy-macro]
 #                   [-h|--sloppy-hang] [-1|--1-stmt]
 #                   <files>
+#
+# run self-tests:
+#   util/check-format.pl util/check-format-test-positives.c
+#   util/check-format.pl util/check-format-test-negatives.c
 #
 # checks adherence to the formatting rules of the OpenSSL coding guidelines
 # assuming that the input files contain syntactically correct C code.
@@ -237,7 +241,7 @@ sub blind_nonspace { # blind non-space text of comment as @, preserving length a
     # the @ character is used because it cannot occur in normal program code so there is no confusion
     # comment text is not blinded to whitespace in order to be able to check double SPC also in comments
     my $comment_text = shift;
-    $comment_text =~ s/\.\s\s/.. /g; # in double SPC checks allow one extra space after period '.' in comments
+    $comment_text =~ s/([\.\?\!])\s\s/$1. /g; # in double SPC checks allow one extra space after period '.', '?', or '!' in comments
     return $comment_text =~ tr/ /@/cr;
 }
 
@@ -654,7 +658,8 @@ while (<>) { # loop over all lines of all input files
         # treat remaining blinded comments and string literal contents as (single) space during matching below
         $intra_line =~ s/@+/ /g;                     # note that double SPC has already been handled above
         $intra_line =~ s/\s+$//;                     # strip any (resulting) space at EOL
-        $intra_line =~ s/(for\s*\();;(\))/"$1$2"/eg; # strip ';;' in for (;;)
+        $intra_line =~ s/(for\s*\([^;]*);;(\))/"$1$2"/eg; # strip trailing ';;' in for (;;)
+        $intra_line =~ s/(for\s*\([^;]+;[^;]+);(\))/"$1$2"/eg; # strip trailing ';' in for (;;)
         $intra_line =~ s/(=\s*)\{ /"$1@ "/eg;        # do not report {SPC in initializers such as ' = { 0, };'
         $intra_line =~ s/, \};/, @;/g;               # do not report SPC} in initializers such as ' = { 0, };'
         report("SPC before '$1'") if $intra_line =~ m/[\w)\]]\s+(\+\+|--)/;  # postfix ++/-- with preceding space
@@ -670,17 +675,17 @@ while (<>) { # loop over all lines of all input files
         report("no SPC before '=' or '<op>='") if $intra_line =~ m/\S(=)/;   # '=' etc. without preceding space
         report("no SPC before '$1'")  if $intra_line =~ m/\S([|\/%<>^\?])/;  # |/%<>^? without preceding space
         # TODO ternary ':' without preceding SPC, while allowing no SPC before ':' after 'case'
-        report("no SPC before '$1'")  if $intra_line =~ m/[^\s{()\[]([+\-])/;# +/- without preceding space or {()[
+        report("no SPC before binary '$1'")  if $intra_line =~ m/[^\s{()\[]([+\-])/;# +/- without preceding space or {()[
                                                                              # or ')' (which is used f type casts)
-        report("no SPC before '$1'")  if $intra_line =~ m/[^\s{()\[*]([*])/; # '*' without preceding space or {()[*
-        report("no SPC before '$1'")  if $intra_line =~ m/[^\s{()\[]([&])/;  # '&' without preceding space or {()[
+        report("no SPC before binary '$1'")  if $intra_line =~ m/[^\s{()\[*]([*])/; # '*' without preceding space or {()[*
+        report("no SPC before binary '$1'")  if $intra_line =~ m/[^\s{()\[]([&])/;  # '&' without preceding space or {()[
         report("no SPC after ternary '$1'") if $intra_line =~ m/(:)[^\s\d]/; # ':' without following space or digit
         report("no SPC after '$1'")   if $intra_line =~ m/([,;=|\/%<>^\?])\S/; # ,;=|/%<>^? without following space
-        report("no SPC after binary '$1'") if $intra_line=~m/([*])[^\sa-zA-Z_(),*]/;# '*' w/o space or \w(),* after
+        report("no SPC after binary '$1'") if $intra_line=~m/[^{(\[]([*])[^\sa-zA-Z_(),*]/;# '*' w/o space or \w(),* after
         # TODO unary '*' must not be followed by SPC
         report("no SPC after binary '$1'") if $intra_line=~m/([&])[^\sa-zA-Z_(]/;  # '&' w/o following space or \w(
         # TODO unary '&' must not be followed by SPC
-        report("no SPC after binary '$1'") if $intra_line=~m/([+\-])[^\s\d(]/;  # +/- w/o following space or \d(
+        report("no SPC after binary '$1'") if $intra_line=~m/[^{(\[]([+\-])[^\s\d(]/;  # +/- w/o following space or \d(
         # TODO unary '+' and '-' must not be followed by SPC
         report("no SPC after '$2'")   if $intra_line =~ m/(^|\W)(if|while|for|switch|case)[^\w\s]/; # kw w/o SPC
         report("no SPC after '$2'")   if $intra_line =~ m/(^|\W)(return)[^\w\s;]/;  # return w/o SPC or ';'
@@ -793,7 +798,7 @@ while (<>) { # loop over all lines of all input files
             $local_offset = -INDENT_LEVEL;
         } else {
             if (m/^([\s@]*)(\w+):/) { # (leading) label, cannot be "default"
-                $local_offset = -INDENT_LEVEL + 1 ;
+                $local_offset = -INDENT_LEVEL;
                 $has_label = 1;
             }
         }

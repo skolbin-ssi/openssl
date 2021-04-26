@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -18,11 +18,6 @@
 #include <openssl/pkcs7.h>
 #include <openssl/pem.h>
 #include <openssl/objects.h>
-
-DEFINE_STACK_OF(X509_CRL)
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_INFO)
-DEFINE_STACK_OF_STRING()
 
 static int add_certs_from_file(STACK_OF(X509) *stack, char *certfile);
 
@@ -107,6 +102,8 @@ int crl2pkcs7_main(int argc, char **argv)
             break;
         }
     }
+
+    /* No remaining args. */
     argc = opt_num_rest();
     if (argc != 0)
         goto opthelp;
@@ -137,19 +134,20 @@ int crl2pkcs7_main(int argc, char **argv)
 
     if (!ASN1_INTEGER_set(p7s->version, 1))
         goto end;
-    if ((crl_stack = sk_X509_CRL_new_null()) == NULL)
-        goto end;
-    p7s->crl = crl_stack;
+
     if (crl != NULL) {
+        if ((crl_stack = sk_X509_CRL_new_null()) == NULL)
+            goto end;
+        p7s->crl = crl_stack;
         sk_X509_CRL_push(crl_stack, crl);
         crl = NULL;             /* now part of p7 for OPENSSL_freeing */
     }
 
-    if ((cert_stack = sk_X509_new_null()) == NULL)
-        goto end;
-    p7s->cert = cert_stack;
+    if (certflst != NULL) {
+        if ((cert_stack = sk_X509_new_null()) == NULL)
+            goto end;
+        p7s->cert = cert_stack;
 
-    if (certflst != NULL)
         for (i = 0; i < sk_OPENSSL_STRING_num(certflst); i++) {
             certfile = sk_OPENSSL_STRING_value(certflst, i);
             if (add_certs_from_file(cert_stack, certfile) < 0) {
@@ -158,6 +156,7 @@ int crl2pkcs7_main(int argc, char **argv)
                 goto end;
             }
         }
+    }
 
     out = bio_open_default(outfile, 'w', outformat);
     if (out == NULL)

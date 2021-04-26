@@ -34,9 +34,6 @@
 #  include <openssl/rsa.h>
 #  include <openssl/dsa.h>
 
-DEFINE_STACK_OF(X509)
-DEFINE_STACK_OF(X509_NAME)
-
 /*
  * This module uses several "new" interfaces, among which is
  * CertGetCertificateContextProperty. CERT_KEY_PROV_INFO_PROP_ID is
@@ -603,9 +600,19 @@ void engine_load_capi_int(void)
     ENGINE *toadd = engine_capi();
     if (!toadd)
         return;
+    ERR_set_mark();
     ENGINE_add(toadd);
+    /*
+     * If the "add" worked, it gets a structural reference. So either way, we
+     * release our just-created reference.
+     */
     ENGINE_free(toadd);
-    ERR_clear_error();
+    /*
+     * If the "add" didn't work, it was probably a conflict because it was
+     * already added (eg. someone calling ENGINE_load_blah then calling
+     * ENGINE_load_builtin_engines() perhaps).
+     */
+    ERR_pop_to_mark();
 }
 # endif
 

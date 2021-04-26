@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -135,7 +135,7 @@ static int ok_new(BIO *bi)
     BIO_OK_CTX *ctx;
 
     if ((ctx = OPENSSL_zalloc(sizeof(*ctx))) == NULL) {
-        EVPerr(EVP_F_OK_NEW, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_EVP, ERR_R_MALLOC_FAILURE);
         return 0;
     }
 
@@ -204,7 +204,7 @@ static int ok_read(BIO *b, char *out, int outl)
                 /*
                  * copy start of the next block into proper place
                  */
-                if (ctx->buf_len_save - ctx->buf_off_save > 0) {
+                if (ctx->buf_len_save > ctx->buf_off_save) {
                     ctx->buf_len = ctx->buf_len_save - ctx->buf_off_save;
                     memmove(ctx->buf, &(ctx->buf[ctx->buf_off_save]),
                             ctx->buf_len);
@@ -394,7 +394,7 @@ static long ok_ctrl(BIO *b, int cmd, long num, void *ptr)
     case BIO_C_GET_MD:
         if (BIO_get_init(b)) {
             ppmd = ptr;
-            *ppmd = EVP_MD_CTX_md(ctx->md);
+            *ppmd = EVP_MD_CTX_get0_md(ctx->md);
         } else
             ret = 0;
         break;
@@ -442,7 +442,7 @@ static int sig_out(BIO *b)
 
     ctx = BIO_get_data(b);
     md = ctx->md;
-    digest = EVP_MD_CTX_md(md);
+    digest = EVP_MD_CTX_get0_md(md);
     md_size = EVP_MD_size(digest);
     md_data = EVP_MD_CTX_md_data(md);
 
@@ -486,7 +486,7 @@ static int sig_in(BIO *b)
 
     ctx = BIO_get_data(b);
     md = ctx->md;
-    digest = EVP_MD_CTX_md(md);
+    digest = EVP_MD_CTX_get0_md(md);
     md_size = EVP_MD_size(digest);
     md_data = EVP_MD_CTX_md_data(md);
 
@@ -532,7 +532,7 @@ static int block_out(BIO *b)
 
     ctx = BIO_get_data(b);
     md = ctx->md;
-    digest = EVP_MD_CTX_md(md);
+    digest = EVP_MD_CTX_get0_md(md);
     md_size = EVP_MD_size(digest);
 
     tl = ctx->buf_len - OK_BLOCK_BLOCK;
@@ -563,7 +563,7 @@ static int block_in(BIO *b)
 
     ctx = BIO_get_data(b);
     md = ctx->md;
-    md_size = EVP_MD_size(EVP_MD_CTX_md(md));
+    md_size = EVP_MD_size(EVP_MD_CTX_get0_md(md));
 
     assert(sizeof(tl) >= OK_BLOCK_BLOCK); /* always true */
     tl = ctx->buf[0];

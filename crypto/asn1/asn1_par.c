@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -72,10 +72,8 @@ static int asn1_print_info(BIO *bp, long offset, int depth, int hl, long len,
     if (saved_indent >= 0)
         BIO_set_indent(bp, saved_indent);
     if (pop_f_prefix) {
-        BIO *next = BIO_pop(bp);
-
+        BIO_pop(bp);
         BIO_free(bp);
-        bp = next;
     }
     return i;
 }
@@ -339,6 +337,7 @@ static int asn1_parse2(BIO *bp, const unsigned char **pp, long length,
                 }
                 if (BIO_puts(bp, "]") <= 0)
                     goto end;
+                dump_cont = 0;
             }
 
             if (!nl) {

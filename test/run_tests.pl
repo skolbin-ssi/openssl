@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -31,7 +31,7 @@ my $srctop = $ENV{SRCTOP} || $ENV{TOP};
 my $bldtop = $ENV{BLDTOP} || $ENV{TOP};
 my $recipesdir = catdir($srctop, "test", "recipes");
 my $libdir = rel2abs(catdir($srctop, "util", "perl"));
-my $jobs = $ENV{HARNESS_JOBS};
+my $jobs = $ENV{HARNESS_JOBS} // 1;
 
 $ENV{OPENSSL_CONF} = rel2abs(catdir($srctop, "apps", "openssl.cnf"));
 $ENV{OPENSSL_CONF_INCLUDE} = rel2abs(catdir($bldtop, "providers"));
@@ -44,9 +44,17 @@ my %tapargs =
       lib               => [ $libdir ],
       switches          => '-w',
       merge             => 1,
+      timer             => $ENV{HARNESS_TIMER} ? 1 : 0,
     );
 
-$tapargs{jobs} = $jobs if defined $jobs;
+if ($jobs > 1) {
+    if ($ENV{HARNESS_VERBOSE}) {
+        print "Warning: HARNESS_JOBS > 1 ignored with HARNESS_VERBOSE\n";
+    } else {
+        $tapargs{jobs} = $jobs;
+        print "Using HARNESS_JOBS=$jobs\n";
+    }
+}
 
 # Additional OpenSSL special TAP arguments.  Because we can't pass them via
 # TAP::Harness->new(), they will be accessed directly, see the
@@ -74,7 +82,7 @@ sub reorder {
     my $key = pop;
 
     # for parallel test runs, do slow tests first
-    if (defined $jobs && $jobs > 1 && $key =~ m/test_ssl_new|test_fuzz/) {
+    if ($jobs > 1 && $key =~ m/test_ssl_new|test_fuzz/) {
         $key =~ s/(\d+)-/00-/;
     }
     return $key;
@@ -146,7 +154,8 @@ my $eres;
 
 $eres = eval {
     package TAP::Parser::OpenSSL;
-    use parent 'TAP::Parser';
+    use parent -norequire, 'TAP::Parser';
+    require TAP::Parser;
 
     sub new {
         my $class = shift;
@@ -229,7 +238,8 @@ $eres = eval {
     }
 
     package TAP::Harness::OpenSSL;
-    use parent 'TAP::Harness';
+    use parent -norequire, 'TAP::Harness';
+    require TAP::Harness;
 
     package main;
 

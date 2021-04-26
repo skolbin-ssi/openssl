@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -10,11 +10,9 @@
 #include "crypto/cryptlib.h"
 #include "internal/thread_once.h"
 
-DEFINE_STACK_OF(void)
-
-int do_ex_data_init(OPENSSL_CTX *ctx)
+int ossl_do_ex_data_init(OSSL_LIB_CTX *ctx)
 {
-    OSSL_EX_DATA_GLOBAL *global = openssl_ctx_get_ex_data_global(ctx);
+    OSSL_EX_DATA_GLOBAL *global = ossl_lib_ctx_get_ex_data_global(ctx);
 
     if (global == NULL)
         return 0;
@@ -33,7 +31,7 @@ static EX_CALLBACKS *get_and_lock(OSSL_EX_DATA_GLOBAL *global, int class_index)
     EX_CALLBACKS *ip;
 
     if (class_index < 0 || class_index >= CRYPTO_EX_INDEX__COUNT) {
-        CRYPTOerr(CRYPTO_F_GET_AND_LOCK, ERR_R_PASSED_INVALID_ARGUMENT);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_PASSED_INVALID_ARGUMENT);
         return NULL;
     }
 
@@ -45,7 +43,8 @@ static EX_CALLBACKS *get_and_lock(OSSL_EX_DATA_GLOBAL *global, int class_index)
          return NULL;
     }
 
-    CRYPTO_THREAD_write_lock(global->ex_data_lock);
+    if (!CRYPTO_THREAD_write_lock(global->ex_data_lock))
+        return NULL;
     ip = &global->ex_data[class_index];
     return ip;
 }
@@ -61,10 +60,10 @@ static void cleanup_cb(EX_CALLBACK *funcs)
  * called under potential race-conditions anyway (it's for program shutdown
  * after all).
  */
-void crypto_cleanup_all_ex_data_int(OPENSSL_CTX *ctx)
+void ossl_crypto_cleanup_all_ex_data_int(OSSL_LIB_CTX *ctx)
 {
     int i;
-    OSSL_EX_DATA_GLOBAL *global = openssl_ctx_get_ex_data_global(ctx);
+    OSSL_EX_DATA_GLOBAL *global = ossl_lib_ctx_get_ex_data_global(ctx);
 
     if (global == NULL)
         return;
@@ -102,12 +101,12 @@ static int dummy_dup(CRYPTO_EX_DATA *to, const CRYPTO_EX_DATA *from,
     return 1;
 }
 
-int crypto_free_ex_index_ex(OPENSSL_CTX *ctx, int class_index, int idx)
+int ossl_crypto_free_ex_index_ex(OSSL_LIB_CTX *ctx, int class_index, int idx)
 {
     EX_CALLBACKS *ip;
     EX_CALLBACK *a;
     int toret = 0;
-    OSSL_EX_DATA_GLOBAL *global = openssl_ctx_get_ex_data_global(ctx);
+    OSSL_EX_DATA_GLOBAL *global = ossl_lib_ctx_get_ex_data_global(ctx);
 
     if (global == NULL)
         return 0;
@@ -132,21 +131,22 @@ err:
 
 int CRYPTO_free_ex_index(int class_index, int idx)
 {
-    return crypto_free_ex_index_ex(NULL, class_index, idx);
+    return ossl_crypto_free_ex_index_ex(NULL, class_index, idx);
 }
 
 /*
  * Register a new index.
  */
-int crypto_get_ex_new_index_ex(OPENSSL_CTX *ctx, int class_index, long argl,
-                               void *argp, CRYPTO_EX_new *new_func,
-                               CRYPTO_EX_dup *dup_func,
-                               CRYPTO_EX_free *free_func)
+int ossl_crypto_get_ex_new_index_ex(OSSL_LIB_CTX *ctx, int class_index,
+                                    long argl, void *argp,
+                                    CRYPTO_EX_new *new_func,
+                                    CRYPTO_EX_dup *dup_func,
+                                    CRYPTO_EX_free *free_func)
 {
     int toret = -1;
     EX_CALLBACK *a;
     EX_CALLBACKS *ip;
-    OSSL_EX_DATA_GLOBAL *global = openssl_ctx_get_ex_data_global(ctx);
+    OSSL_EX_DATA_GLOBAL *global = ossl_lib_ctx_get_ex_data_global(ctx);
 
     if (global == NULL)
         return -1;
@@ -161,14 +161,14 @@ int crypto_get_ex_new_index_ex(OPENSSL_CTX *ctx, int class_index, long argl,
          * "app_data" routines use ex_data index zero.  See RT 3710. */
         if (ip->meth == NULL
             || !sk_EX_CALLBACK_push(ip->meth, NULL)) {
-            CRYPTOerr(CRYPTO_F_CRYPTO_GET_EX_NEW_INDEX_EX, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
             goto err;
         }
     }
 
     a = (EX_CALLBACK *)OPENSSL_malloc(sizeof(*a));
     if (a == NULL) {
-        CRYPTOerr(CRYPTO_F_CRYPTO_GET_EX_NEW_INDEX_EX, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
         goto err;
     }
     a->argl = argl;
@@ -178,7 +178,7 @@ int crypto_get_ex_new_index_ex(OPENSSL_CTX *ctx, int class_index, long argl,
     a->free_func = free_func;
 
     if (!sk_EX_CALLBACK_push(ip->meth, NULL)) {
-        CRYPTOerr(CRYPTO_F_CRYPTO_GET_EX_NEW_INDEX_EX, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
         OPENSSL_free(a);
         goto err;
     }
@@ -194,8 +194,8 @@ int CRYPTO_get_ex_new_index(int class_index, long argl, void *argp,
                             CRYPTO_EX_new *new_func, CRYPTO_EX_dup *dup_func,
                             CRYPTO_EX_free *free_func)
 {
-    return crypto_get_ex_new_index_ex(NULL, class_index, argl, argp, new_func,
-                                      dup_func, free_func);
+    return ossl_crypto_get_ex_new_index_ex(NULL, class_index, argl, argp,
+                                           new_func, dup_func, free_func);
 }
 
 /*
@@ -205,15 +205,15 @@ int CRYPTO_get_ex_new_index(int class_index, long argl, void *argp,
  * in the lock, then using them outside the lock. Note this only applies
  * to the global "ex_data" state (ie. class definitions), not 'ad' itself.
  */
-int crypto_new_ex_data_ex(OPENSSL_CTX *ctx, int class_index, void *obj,
-                          CRYPTO_EX_DATA *ad)
+int ossl_crypto_new_ex_data_ex(OSSL_LIB_CTX *ctx, int class_index, void *obj,
+                               CRYPTO_EX_DATA *ad)
 {
     int mx, i;
     void *ptr;
     EX_CALLBACK **storage = NULL;
     EX_CALLBACK *stack[10];
     EX_CALLBACKS *ip;
-    OSSL_EX_DATA_GLOBAL *global = openssl_ctx_get_ex_data_global(ctx);
+    OSSL_EX_DATA_GLOBAL *global = ossl_lib_ctx_get_ex_data_global(ctx);
 
     if (global == NULL)
         return 0;
@@ -237,7 +237,7 @@ int crypto_new_ex_data_ex(OPENSSL_CTX *ctx, int class_index, void *obj,
     CRYPTO_THREAD_unlock(global->ex_data_lock);
 
     if (mx > 0 && storage == NULL) {
-        CRYPTOerr(CRYPTO_F_CRYPTO_NEW_EX_DATA_EX, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     for (i = 0; i < mx; i++) {
@@ -254,7 +254,7 @@ int crypto_new_ex_data_ex(OPENSSL_CTX *ctx, int class_index, void *obj,
 
 int CRYPTO_new_ex_data(int class_index, void *obj, CRYPTO_EX_DATA *ad)
 {
-    return crypto_new_ex_data_ex(NULL, class_index, obj, ad);
+    return ossl_crypto_new_ex_data_ex(NULL, class_index, obj, ad);
 }
 
 /*
@@ -277,7 +277,7 @@ int CRYPTO_dup_ex_data(int class_index, CRYPTO_EX_DATA *to,
         /* Nothing to copy over */
         return 1;
 
-    global = openssl_ctx_get_ex_data_global(from->ctx);
+    global = ossl_lib_ctx_get_ex_data_global(from->ctx);
     if (global == NULL)
         return 0;
 
@@ -303,7 +303,7 @@ int CRYPTO_dup_ex_data(int class_index, CRYPTO_EX_DATA *to,
     if (mx == 0)
         return 1;
     if (storage == NULL) {
-        CRYPTOerr(CRYPTO_F_CRYPTO_DUP_EX_DATA, ERR_R_MALLOC_FAILURE);
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
         return 0;
     }
     /*
@@ -344,7 +344,7 @@ void CRYPTO_free_ex_data(int class_index, void *obj, CRYPTO_EX_DATA *ad)
     EX_CALLBACK *f;
     EX_CALLBACK *stack[10];
     EX_CALLBACK **storage = NULL;
-    OSSL_EX_DATA_GLOBAL *global = openssl_ctx_get_ex_data_global(ad->ctx);
+    OSSL_EX_DATA_GLOBAL *global = ossl_lib_ctx_get_ex_data_global(ad->ctx);
 
     if (global == NULL)
         goto err;
@@ -369,7 +369,8 @@ void CRYPTO_free_ex_data(int class_index, void *obj, CRYPTO_EX_DATA *ad)
         if (storage != NULL)
             f = storage[i];
         else {
-            CRYPTO_THREAD_write_lock(global->ex_data_lock);
+            if (!CRYPTO_THREAD_write_lock(global->ex_data_lock))
+                continue;
             f = sk_EX_CALLBACK_value(ip->meth, i);
             CRYPTO_THREAD_unlock(global->ex_data_lock);
         }
@@ -394,17 +395,24 @@ void CRYPTO_free_ex_data(int class_index, void *obj, CRYPTO_EX_DATA *ad)
 int CRYPTO_alloc_ex_data(int class_index, void *obj, CRYPTO_EX_DATA *ad,
                          int idx)
 {
-    EX_CALLBACK *f;
-    EX_CALLBACKS *ip;
     void *curval;
-    OSSL_EX_DATA_GLOBAL *global;
 
     curval = CRYPTO_get_ex_data(ad, idx);
     /* Already there, no need to allocate */
     if (curval != NULL)
         return 1;
 
-    global = openssl_ctx_get_ex_data_global(ad->ctx);
+    return ossl_crypto_alloc_ex_data_intern(class_index, obj, ad, idx);
+}
+
+int ossl_crypto_alloc_ex_data_intern(int class_index, void *obj,
+                                     CRYPTO_EX_DATA *ad, int idx)
+{
+    EX_CALLBACK *f;
+    EX_CALLBACKS *ip;
+    OSSL_EX_DATA_GLOBAL *global;
+
+    global = ossl_lib_ctx_get_ex_data_global(ad->ctx);
     if (global == NULL)
         return 0;
 
@@ -436,18 +444,22 @@ int CRYPTO_set_ex_data(CRYPTO_EX_DATA *ad, int idx, void *val)
 
     if (ad->sk == NULL) {
         if ((ad->sk = sk_void_new_null()) == NULL) {
-            CRYPTOerr(CRYPTO_F_CRYPTO_SET_EX_DATA, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
             return 0;
         }
     }
 
     for (i = sk_void_num(ad->sk); i <= idx; ++i) {
         if (!sk_void_push(ad->sk, NULL)) {
-            CRYPTOerr(CRYPTO_F_CRYPTO_SET_EX_DATA, ERR_R_MALLOC_FAILURE);
+            ERR_raise(ERR_LIB_CRYPTO, ERR_R_MALLOC_FAILURE);
             return 0;
         }
     }
-    sk_void_set(ad->sk, idx, val);
+    if (sk_void_set(ad->sk, idx, val) != val) {
+        /* Probably the index is out of bounds */
+        ERR_raise(ERR_LIB_CRYPTO, ERR_R_PASSED_INVALID_ARGUMENT);
+        return 0;
+    }
     return 1;
 }
 
@@ -462,7 +474,7 @@ void *CRYPTO_get_ex_data(const CRYPTO_EX_DATA *ad, int idx)
     return sk_void_value(ad->sk, idx);
 }
 
-OPENSSL_CTX *crypto_ex_data_get_openssl_ctx(const CRYPTO_EX_DATA *ad)
+OSSL_LIB_CTX *ossl_crypto_ex_data_get_ossl_lib_ctx(const CRYPTO_EX_DATA *ad)
 {
     return ad->ctx;
 }

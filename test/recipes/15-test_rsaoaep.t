@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -18,16 +18,15 @@ BEGIN {
 }
 use lib srctop_dir('Configurations');
 use lib bldtop_dir('.');
-use platform;
 
-my $no_fips = disabled('fips') || ($ENV{NO_FIPS} // 0);
+my $no_check = disabled('fips-securitychecks');
 
 plan tests =>
-    ($no_fips ? 0 : 1)          # FIPS install test
+    ($no_check ? 0 : 1)         # FIPS security check
     + 9;
 
 my @prov = ( );
-my $provconf = srctop_file("test", "fips.cnf");
+my $provconf = srctop_file("test", "fips-and-base.cnf");
 my $provpath = bldtop_dir("providers");
 my $msg_file = data_file("plain_text");
 my $enc1_file = "enc1.bin";
@@ -36,17 +35,24 @@ my $enc3_file = "enc3.bin";
 my $dec1_file = "dec1.txt";
 my $dec2_file = "dec2.txt";
 my $dec3_file = "dec3.txt";
-my $key_file = srctop_file("test", "testrsa.pem");
+my $key_file = srctop_file("test", "testrsa2048.pem");
+my $small_key_file = srctop_file("test", "testrsa.pem");
 
-unless ($no_fips) {
-    @prov = ( "-provider_path", $provpath, "-config", $provconf );
-    my $infile = bldtop_file('providers', platform->dso('fips'));
+$ENV{OPENSSL_TEST_LIBCTX} = "1";
 
-    ok(run(app(['openssl', 'fipsinstall',
-                '-out', bldtop_file('providers', 'fipsmodule.cnf'),
-                '-module', $infile])),
-       "fipsinstall");
-    $ENV{OPENSSL_TEST_LIBCTX} = "1";
+unless ($no_check) {
+    @prov = ( "-provider-path", $provpath, "-config", $provconf );
+    ok(!run(app(['openssl', 'pkeyutl',
+                 @prov,
+                 '-encrypt',
+                 '-in', $msg_file,
+                 '-inkey', $small_key_file,
+                 '-pkeyopt', 'pad-mode:oaep',
+                 '-pkeyopt', 'oaep-label:123',
+                 '-pkeyopt', 'digest:sha1',
+                 '-pkeyopt', 'mgf1-digest:sha1',
+                 '-out', $enc1_file])),
+       "RSA OAEP Encryption with a key smaller than 2048 in fips mode should fail");
 }
 
 ok(run(app(['openssl', 'pkeyutl',

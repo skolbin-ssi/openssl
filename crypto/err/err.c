@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -75,8 +75,8 @@ static ERR_STRING_DATA ERR_str_libraries[] = {
     {ERR_PACK(ERR_LIB_SM2, 0, 0), "SM2 routines"},
     {ERR_PACK(ERR_LIB_ESS, 0, 0), "ESS routines"},
     {ERR_PACK(ERR_LIB_PROV, 0, 0), "Provider routines"},
-    {ERR_PACK(ERR_LIB_OSSL_SERIALIZER, 0, 0), "SERIALIZER routines"},
-    {ERR_PACK(ERR_LIB_OSSL_DESERIALIZER, 0, 0), "DESERIALIZER routines"},
+    {ERR_PACK(ERR_LIB_OSSL_ENCODER, 0, 0), "ENCODER routines"},
+    {ERR_PACK(ERR_LIB_OSSL_DECODER, 0, 0), "DECODER routines"},
     {ERR_PACK(ERR_LIB_HTTP, 0, 0), "HTTP routines"},
     {0, NULL},
 };
@@ -117,6 +117,15 @@ static ERR_STRING_DATA ERR_str_reasons[] = {
     {ERR_R_INVALID_PROVIDER_FUNCTIONS, "invalid provider functions"},
     {ERR_R_INTERRUPTED_OR_CANCELLED, "interrupted or cancelled"},
 
+    /*
+     * Something is unsupported, exactly what is expressed with additional data
+     */
+    {ERR_R_UNSUPPORTED, "unsupported"},
+    /*
+     * A fetch failed for other reasons than the name to be fetched being
+     * unsupported.
+     */
+    {ERR_R_FETCH_FAILED, "fetch failed"},
     {0, NULL},
 };
 #endif
@@ -167,7 +176,8 @@ static ERR_STRING_DATA *int_err_get_item(const ERR_STRING_DATA *d)
 {
     ERR_STRING_DATA *p = NULL;
 
-    CRYPTO_THREAD_read_lock(err_string_lock);
+    if (!CRYPTO_THREAD_read_lock(err_string_lock))
+        return NULL;
     p = lh_ERR_STRING_DATA_retrieve(int_error_hash, d);
     CRYPTO_THREAD_unlock(err_string_lock);
 
@@ -181,14 +191,14 @@ static void ERR_STATE_free(ERR_STATE *s)
     if (s == NULL)
         return;
     for (i = 0; i < ERR_NUM_ERRORS; i++) {
-        err_clear_data(s, i, 1);
+        err_clear(s, i, 1);
     }
     OPENSSL_free(s);
 }
 
 DEFINE_RUN_ONCE_STATIC(do_err_strings_init)
 {
-    if (!OPENSSL_init_crypto(0, NULL))
+    if (!OPENSSL_init_crypto(OPENSSL_INIT_BASE_ONLY, NULL))
         return 0;
     err_string_lock = CRYPTO_THREAD_lock_new();
     if (err_string_lock == NULL)
@@ -225,11 +235,12 @@ static void err_patch(int lib, ERR_STRING_DATA *str)
 }
 
 /*
- * Hash in |str| error strings. Assumes the URN_ONCE was done.
+ * Hash in |str| error strings. Assumes the RUN_ONCE was done.
  */
 static int err_load_strings(const ERR_STRING_DATA *str)
 {
-    CRYPTO_THREAD_write_lock(err_string_lock);
+    if (!CRYPTO_THREAD_write_lock(err_string_lock))
+        return 0;
     for (; str->error; str++)
         (void)lh_ERR_STRING_DATA_insert(int_error_hash,
                                        (ERR_STRING_DATA *)str);
@@ -237,7 +248,7 @@ static int err_load_strings(const ERR_STRING_DATA *str)
     return 1;
 }
 
-int ERR_load_ERR_strings(void)
+int err_load_ERR_strings_int(void)
 {
 #ifndef OPENSSL_NO_ERR
     if (!RUN_ONCE(&err_string_init, do_err_strings_init))
@@ -251,7 +262,7 @@ int ERR_load_ERR_strings(void)
 
 int ERR_load_strings(int lib, ERR_STRING_DATA *str)
 {
-    if (ERR_load_ERR_strings() == 0)
+    if (err_load_ERR_strings_int() == 0)
         return 0;
 
     err_patch(lib, str);
@@ -261,7 +272,7 @@ int ERR_load_strings(int lib, ERR_STRING_DATA *str)
 
 int ERR_load_strings_const(const ERR_STRING_DATA *str)
 {
-    if (ERR_load_ERR_strings() == 0)
+    if (err_load_ERR_strings_int() == 0)
         return 0;
     err_load_strings(str);
     return 1;
@@ -272,7 +283,8 @@ int ERR_unload_strings(int lib, ERR_STRING_DATA *str)
     if (!RUN_ONCE(&err_string_init, do_err_strings_init))
         return 0;
 
-    CRYPTO_THREAD_write_lock(err_string_lock);
+    if (!CRYPTO_THREAD_write_lock(err_string_lock))
+        return 0;
     /*
      * We don't need to ERR_PACK the lib, since that was done (to
      * the table) when it was loaded.
@@ -297,7 +309,7 @@ void ERR_clear_error(void)
     int i;
     ERR_STATE *es;
 
-    es = err_get_state_int();
+    es = ossl_err_get_state_int();
     if (es == NULL)
         return;
 
@@ -312,21 +324,6 @@ unsigned long ERR_get_error(void)
     return get_error_values(EV_POP, NULL, NULL, NULL, NULL, NULL);
 }
 
-unsigned long ERR_get_error_line(const char **file, int *line)
-{
-    return get_error_values(EV_POP, file, line, NULL, NULL, NULL);
-}
-
-unsigned long ERR_get_error_func(const char **func)
-{
-    return get_error_values(EV_POP, NULL, NULL, func, NULL, NULL);
-}
-
-unsigned long ERR_get_error_data(const char **data, int *flags)
-{
-    return get_error_values(EV_POP, NULL, NULL, NULL, data, flags);
-}
-
 unsigned long ERR_get_error_all(const char **file, int *line,
                                 const char **func,
                                 const char **data, int *flags)
@@ -335,6 +332,11 @@ unsigned long ERR_get_error_all(const char **file, int *line,
 }
 
 #ifndef OPENSSL_NO_DEPRECATED_3_0
+unsigned long ERR_get_error_line(const char **file, int *line)
+{
+    return get_error_values(EV_POP, file, line, NULL, NULL, NULL);
+}
+
 unsigned long ERR_get_error_line_data(const char **file, int *line,
                                       const char **data, int *flags)
 {
@@ -421,7 +423,7 @@ static unsigned long get_error_values(ERR_GET_ACTION g,
     ERR_STATE *es;
     unsigned long ret;
 
-    es = err_get_state_int();
+    es = ossl_err_get_state_int();
     if (es == NULL)
         return 0;
 
@@ -489,11 +491,12 @@ static unsigned long get_error_values(ERR_GET_ACTION g,
     return ret;
 }
 
-void ERR_error_string_n(unsigned long e, char *buf, size_t len)
+void ossl_err_string_int(unsigned long e, const char *func,
+                         char *buf, size_t len)
 {
     char lsbuf[64], rsbuf[256];
     const char *ls, *rs = NULL;
-    unsigned long f = 0, l, r;
+    unsigned long l, r;
 
     if (len == 0)
         return;
@@ -512,22 +515,30 @@ void ERR_error_string_n(unsigned long e, char *buf, size_t len)
      * directly instead.
      */
     r = ERR_GET_REASON(e);
+#ifndef OPENSSL_NO_ERR
     if (ERR_SYSTEM_ERROR(e)) {
         if (openssl_strerror_r(r, rsbuf, sizeof(rsbuf)))
             rs = rsbuf;
     } else {
         rs = ERR_reason_error_string(e);
     }
+#endif
     if (rs == NULL) {
         BIO_snprintf(rsbuf, sizeof(rsbuf), "reason(%lu)", r);
         rs = rsbuf;
     }
 
-    BIO_snprintf(buf, len, "error:%08lX:%s:%s:%s", e, ls, "", rs);
+    BIO_snprintf(buf, len, "error:%08lX:%s:%s:%s", e, ls, func, rs);
     if (strlen(buf) == len - 1) {
         /* Didn't fit; use a minimal format. */
-        BIO_snprintf(buf, len, "err:%lx:%lx:%lx:%lx", e, l, f, r);
+        BIO_snprintf(buf, len, "err:%lx:%lx:%lx:%lx", e, l, 0L, r);
     }
+}
+
+
+void ERR_error_string_n(unsigned long e, char *buf, size_t len)
+{
+    ossl_err_string_int(e, "", buf, len);
 }
 
 /*
@@ -594,8 +605,7 @@ const char *ERR_reason_error_string(unsigned long e)
     return ((p == NULL) ? NULL : p->string);
 }
 
-/* TODO(3.0): arg ignored for now */
-static void err_delete_thread_state(void *arg)
+static void err_delete_thread_state(void *unused)
 {
     ERR_STATE *state = CRYPTO_THREAD_get_local(&err_thread_local);
     if (state == NULL)
@@ -623,7 +633,7 @@ DEFINE_RUN_ONCE_STATIC(err_do_init)
     return CRYPTO_THREAD_init_local(&err_thread_local, NULL);
 }
 
-ERR_STATE *err_get_state_int(void)
+ERR_STATE *ossl_err_get_state_int(void)
 {
     ERR_STATE *state;
     int saveerrno = get_last_sys_error();
@@ -665,7 +675,7 @@ ERR_STATE *err_get_state_int(void)
 #ifndef OPENSSL_NO_DEPRECATED_3_0
 ERR_STATE *ERR_get_state(void)
 {
-    return err_get_state_int();
+    return ossl_err_get_state_int();
 }
 #endif
 
@@ -721,7 +731,8 @@ int ERR_get_next_error_library(void)
     if (!RUN_ONCE(&err_string_init, do_err_strings_init))
         return 0;
 
-    CRYPTO_THREAD_write_lock(err_string_lock);
+    if (!CRYPTO_THREAD_write_lock(err_string_lock))
+        return 0;
     ret = int_err_library_number++;
     CRYPTO_THREAD_unlock(err_string_lock);
     return ret;
@@ -732,7 +743,7 @@ static int err_set_error_data_int(char *data, size_t size, int flags,
 {
     ERR_STATE *es;
 
-    es = err_get_state_int();
+    es = ossl_err_get_state_int();
     if (es == NULL)
         return 0;
 
@@ -777,7 +788,7 @@ void ERR_add_error_vdata(int num, va_list args)
     ERR_STATE *es;
 
     /* Get the current error data; if an allocated string get it. */
-    es = err_get_state_int();
+    es = ossl_err_get_state_int();
     if (es == NULL)
         return;
     i = es->top;
@@ -832,13 +843,13 @@ int ERR_set_mark(void)
 {
     ERR_STATE *es;
 
-    es = err_get_state_int();
+    es = ossl_err_get_state_int();
     if (es == NULL)
         return 0;
 
     if (es->bottom == es->top)
         return 0;
-    es->err_flags[es->top] |= ERR_FLAG_MARK;
+    es->err_marks[es->top]++;
     return 1;
 }
 
@@ -846,19 +857,19 @@ int ERR_pop_to_mark(void)
 {
     ERR_STATE *es;
 
-    es = err_get_state_int();
+    es = ossl_err_get_state_int();
     if (es == NULL)
         return 0;
 
     while (es->bottom != es->top
-           && (es->err_flags[es->top] & ERR_FLAG_MARK) == 0) {
+           && es->err_marks[es->top] == 0) {
         err_clear(es, es->top, 0);
         es->top = es->top > 0 ? es->top - 1 : ERR_NUM_ERRORS - 1;
     }
 
     if (es->bottom == es->top)
         return 0;
-    es->err_flags[es->top] &= ~ERR_FLAG_MARK;
+    es->err_marks[es->top]--;
     return 1;
 }
 
@@ -867,19 +878,19 @@ int ERR_clear_last_mark(void)
     ERR_STATE *es;
     int top;
 
-    es = err_get_state_int();
+    es = ossl_err_get_state_int();
     if (es == NULL)
         return 0;
 
     top = es->top;
     while (es->bottom != top
-           && (es->err_flags[top] & ERR_FLAG_MARK) == 0) {
+           && es->err_marks[top] == 0) {
         top = top > 0 ? top - 1 : ERR_NUM_ERRORS - 1;
     }
 
     if (es->bottom == top)
         return 0;
-    es->err_flags[top] &= ~ERR_FLAG_MARK;
+    es->err_marks[top]--;
     return 1;
 }
 
@@ -888,7 +899,7 @@ void err_clear_last_constant_time(int clear)
     ERR_STATE *es;
     int top;
 
-    es = err_get_state_int();
+    es = ossl_err_get_state_int();
     if (es == NULL)
         return;
 

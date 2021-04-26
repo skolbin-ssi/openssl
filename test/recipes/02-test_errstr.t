@@ -1,5 +1,5 @@
 #! /usr/bin/env perl
-# Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved.
+# Copyright 2018-2021 The OpenSSL Project Authors. All Rights Reserved.
 #
 # Licensed under the Apache License 2.0 (the "License").  You may not use
 # this file except in compliance with the License.  You can obtain a copy
@@ -57,7 +57,25 @@ plan tests => scalar @Errno::EXPORT_OK
 foreach my $errname (@Errno::EXPORT_OK) {
     # The error names are perl constants, which are implemented as functions
     # returning the numeric value of that name.
-    &ok(match_syserr_reason("Errno::$errname"->()))
+    my $errcode = "Errno::$errname"->();
+
+  SKIP: {
+      # On most systems, there is no E macro for errcode zero in <errno.h>,
+      # which means that it seldom comes up here.  However, reports indicate
+      # that some platforms do have an E macro for errcode zero.
+      # With perl, errcode zero is a bit special.  Perl consistently gives
+      # the empty string for that one, while the C strerror() may give back
+      # something else.  The easiest way to deal with that possible mismatch
+      # is to skip this errcode.
+      skip "perl error strings and ssystem error strings for errcode 0 differ", 1
+          if $errcode == 0;
+      # On some systems (for example Hurd), there are negative error codes.
+      # These are currently unsupported in OpenSSL error reports.
+      skip "negative error codes are not supported in OpenSSL", 1
+          if $errcode < 0;
+
+      &ok(match_syserr_reason($errcode));
+    }
 }
 
 # OpenSSL library 1 is the "unknown" library

@@ -18,8 +18,7 @@ B<openssl> B<verify>
 [B<-vfyopt> I<nm>:I<v>]
 {- $OpenSSL::safe::opt_name_synopsis -}
 {- $OpenSSL::safe::opt_trust_synopsis -}
-{- $OpenSSL::safe::opt_engine_synopsis -}
-{- $OpenSSL::safe::opt_v_synopsis -}
+{- $OpenSSL::safe::opt_engine_synopsis -}{- $OpenSSL::safe::opt_v_synopsis -}
 {- $OpenSSL::safe::opt_provider_synopsis -}
 [B<-->]
 [I<certificate> ...]
@@ -28,7 +27,8 @@ B<openssl> B<verify>
 
 =head1 DESCRIPTION
 
-This command verifies certificate chains.
+This command verifies certificate chains. If a certificate chain has multiple
+problems, this program attempts to display all of them.
 
 =head1 OPTIONS
 
@@ -40,7 +40,7 @@ Print out a usage message.
 
 =item B<-CRLfile> I<file>
 
-The I<file> should contain one or more CRLs in PEM format.
+The file or URI should contain one or more CRLs in PEM or DER format.
 This option can be specified more than once to include CRLs from multiple
 I<file>s.
 
@@ -60,13 +60,14 @@ Print extra information about the operations being performed.
 
 =item B<-trusted> I<file>
 
-A file of trusted certificates in PEM format.
+A file or URI of trusted certificates in PEM, DER, or PKCS#12 format.
 This option can be specified more than once to load certificates from multiple
 I<file>s.
 
 =item B<-untrusted> I<file>
 
-A file of untrusted certificates in PEM format to use for chain building.
+A file or URI of untrusted certificates in PEM, DER, or PKCS#12 format
+to use for chain building.
 This option can be specified more than once to load certificates from multiple
 I<file>s.
 
@@ -79,9 +80,11 @@ Names and values of these options are algorithm-specific.
 {- $OpenSSL::safe::opt_name_item -}
 
 {- $OpenSSL::safe::opt_engine_item -}
+{- output_off() if $disabled{"deprecated-3.0"}; "" -}
 To load certificates or CRLs that require engine support, specify the
 B<-engine> option before any of the
 B<-trusted>, B<-untrusted> or B<-CRLfile> options.
+{- output_on() if $disabled{"deprecated-3.0"}; "" -}
 
 {- $OpenSSL::safe::opt_trust_item -}
 
@@ -97,10 +100,9 @@ with a B<->.
 
 =item I<certificate> ...
 
-One or more target certificates to verify. If no certificates are given,
-this command will attempt to read a certificate from standard input.
-If a certificate chain has multiple problems, this program attempts to
-display all of them.
+One or more target certificates to verify, one per file. If no certificates are
+given, this command will attempt to read a single certificate from standard
+input.
 
 =back
 
@@ -145,7 +147,7 @@ B<X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY> error codes.
 
 =head1 SEE ALSO
 
-L<openssl(1)>,
+L<openssl-verification-options(1)>,
 L<openssl-x509(1)>,
 L<ossl_store-file(7)>
 
