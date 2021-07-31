@@ -89,25 +89,11 @@ struct keytype_desc_st {
 struct der2key_ctx_st {
     PROV_CTX *provctx;
     const struct keytype_desc_st *desc;
+    /* The selection that is passed to der2key_decode() */
+    int selection;
     /* Flag used to signal that a failure is fatal */
     unsigned int flag_fatal : 1;
 };
-
-static int read_der(PROV_CTX *provctx, OSSL_CORE_BIO *cin,
-                    unsigned char **data, long *len)
-{
-    BUF_MEM *mem = NULL;
-    BIO *in = ossl_bio_new_from_core_bio(provctx, cin);
-    int ok = (asn1_d2i_read_bio(in, &mem) >= 0);
-
-    if (ok) {
-        *data = (unsigned char *)mem->data;
-        *len = (long)mem->length;
-        OPENSSL_free(mem);
-    }
-    BIO_free(in);
-    return ok;
-}
 
 typedef void *key_from_pkcs8_t(const PKCS8_PRIV_KEY_INFO *p8inf,
                                OSSL_LIB_CTX *libctx, const char *propq);
@@ -196,9 +182,9 @@ static int der2key_decode(void *vctx, OSSL_CORE_BIO *cin, int selection,
     const unsigned char *derp;
     long der_len = 0;
     void *key = NULL;
-    int orig_selection = selection;
     int ok = 0;
 
+    ctx->selection = selection;
     /*
      * The caller is allowed to specify 0 as a selection mark, to have the
      * structure and key type guessed.  For type-specific structures, this
@@ -214,7 +200,7 @@ static int der2key_decode(void *vctx, OSSL_CORE_BIO *cin, int selection,
         return 0;
     }
 
-    ok = read_der(ctx->provctx, cin, &der, &der_len);
+    ok = ossl_read_der(ctx->provctx, cin, &der, &der_len);
     if (!ok)
         goto next;
 
@@ -229,7 +215,7 @@ static int der2key_decode(void *vctx, OSSL_CORE_BIO *cin, int selection,
         } else if (ctx->desc->d2i_private_key != NULL) {
             key = ctx->desc->d2i_private_key(NULL, &derp, der_len);
         }
-        if (key == NULL && orig_selection != 0)
+        if (key == NULL && ctx->selection != 0)
             goto next;
     }
     if (key == NULL && (selection & OSSL_KEYMGMT_SELECT_PUBLIC_KEY) != 0) {
@@ -238,14 +224,14 @@ static int der2key_decode(void *vctx, OSSL_CORE_BIO *cin, int selection,
             key = ctx->desc->d2i_PUBKEY(NULL, &derp, der_len);
         else
             key = ctx->desc->d2i_public_key(NULL, &derp, der_len);
-        if (key == NULL && orig_selection != 0)
+        if (key == NULL && ctx->selection != 0)
             goto next;
     }
     if (key == NULL && (selection & OSSL_KEYMGMT_SELECT_ALL_PARAMETERS) != 0) {
         derp = der;
         if (ctx->desc->d2i_key_params != NULL)
             key = ctx->desc->d2i_key_params(NULL, &derp, der_len);
-        if (key == NULL && orig_selection != 0)
+        if (key == NULL && ctx->selection != 0)
             goto next;
     }
 
@@ -320,8 +306,7 @@ static int der2key_export_object(void *vctx,
         /* The contents of the reference is the address to our object */
         keydata = *(void **)reference;
 
-        return export(keydata, OSSL_KEYMGMT_SELECT_ALL,
-                      export_cb, export_cbarg);
+        return export(keydata, ctx->selection, export_cb, export_cbarg);
     }
     return 0;
 }
