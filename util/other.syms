@@ -51,6 +51,7 @@ EVP_PKEY_METHOD                         datatype
 EVP_PKEY_ASN1_METHOD                    datatype
 EVP_RAND                                datatype
 EVP_RAND_CTX                            datatype
+EVP_SIGNATURE                           datatype
 GEN_SESSION_CB                          datatype
 OPENSSL_Applink                         external
 OSSL_LIB_CTX                            datatype
@@ -395,6 +396,8 @@ OSSL_CMP_exec_IR_ses                    define
 OSSL_CMP_exec_CR_ses                    define
 OSSL_CMP_exec_P10CR_ses                 define
 OSSL_CMP_exec_KUR_ses                   define
+OSSL_CMP_CTX_get0_trusted               define
+OSSL_CMP_CTX_set0_trusted               define
 OSSL_CMP_CTX_set_log_verbosity          define
 OSSL_CMP_CR                             define
 OSSL_CMP_IR                             define
@@ -529,6 +532,7 @@ SSL_clear_chain_certs                   define
 SSL_clear_mode                          define
 SSL_disable_ct                          define
 SSL_get0_chain_certs                    define
+SSL_get0_iana_groups                    define
 SSL_get0_session                        define
 SSL_get1_curves                         define
 SSL_get1_groups                         define

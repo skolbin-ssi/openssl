@@ -654,7 +654,7 @@ int BIO_lookup_ex(const char *host, const char *service, int lookup_type,
 {
     int ret = 0;                 /* Assume failure */
 
-    switch(family) {
+    switch (family) {
     case AF_INET:
 #ifdef AF_INET6
     case AF_INET6:
@@ -752,7 +752,7 @@ int BIO_lookup_ex(const char *host, const char *service, int lookup_type,
 # pragma pointer_size 32
 #endif
         /* Windows doesn't seem to have in_addr_t */
-#ifdef OPENSSL_SYS_WINDOWS
+#if defined(OPENSSL_SYS_WINDOWS) || defined(OPENSSL_SYS_MSDOS)
         static uint32_t he_fallback_address;
         static const char *he_fallback_addresses[] =
             { (char *)&he_fallback_address, NULL };
@@ -789,7 +789,7 @@ int BIO_lookup_ex(const char *host, const char *service, int lookup_type,
         he_fallback_address = INADDR_ANY;
         if (host == NULL) {
             he = &he_fallback;
-            switch(lookup_type) {
+            switch (lookup_type) {
             case BIO_LOOKUP_CLIENT:
                 he_fallback_address = INADDR_LOOPBACK;
                 break;
@@ -906,12 +906,12 @@ int BIO_lookup_ex(const char *host, const char *service, int lookup_type,
 
             /* The easiest way to create a linked list from an
                array is to start from the back */
-            for(addrlistp = he->h_addr_list; *addrlistp != NULL;
-                addrlistp++)
+            for (addrlistp = he->h_addr_list; *addrlistp != NULL;
+                 addrlistp++)
                 ;
 
-            for(addresses = addrlistp - he->h_addr_list;
-                addrlistp--, addresses-- > 0; ) {
+            for (addresses = addrlistp - he->h_addr_list;
+                 addrlistp--, addresses-- > 0; ) {
                 if (!addrinfo_wrap(he->h_addrtype, socktype,
                                    *addrlistp, he->h_length,
                                    se->s_port, &tmp_bai))

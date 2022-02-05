@@ -143,6 +143,7 @@ int enc_main(int argc, char **argv)
     else if (strcmp(argv[0], "enc") != 0)
         ciphername = argv[0];
 
+    opt_set_unknown_name("cipher");
     prog = opt_init(argc, argv, enc_options);
     while ((o = opt_next()) != OPT_EOF) {
         switch (o) {
@@ -289,17 +290,14 @@ int enc_main(int argc, char **argv)
     }
 
     /* No extra arguments. */
-    argc = opt_num_rest();
-    if (argc != 0)
+    if (!opt_check_rest_arg(NULL))
         goto opthelp;
     if (!app_RAND_load())
         goto end;
 
     /* Get the cipher name, either from progname (if set) or flag. */
-    if (ciphername != NULL) {
-        if (!opt_cipher(ciphername, &cipher))
-            goto opthelp;
-    }
+    if (!opt_cipher(ciphername, &cipher))
+        goto opthelp;
     if (digestname != NULL) {
         if (!opt_md(digestname, &dgst))
             goto opthelp;

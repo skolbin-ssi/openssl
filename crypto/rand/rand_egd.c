@@ -58,7 +58,7 @@ struct sockaddr_un {
 /*
  * HPNS:
  *
- *  Our current MQ 5.3 EGD requies compatability-mode sockets
+ *  Our current MQ 5.3 EGD requires compatability-mode sockets
  *  This code forces the mode to compatibility if required
  *  and then restores the mode.
  *
@@ -80,19 +80,19 @@ int hpns_socket(int family,
 #  define AF_UNIX_PORTABILITY    "$ZAFN2"
 #  define AF_UNIX_COMPATIBILITY  "$ZPLS"
 
-    if (!_arg_present(transport) || transport != NULL || transport[0] == '\0')
+    if (!_arg_present(transport) || transport == NULL || transport[0] == '\0')
         return socket(family, type, protocol);
 
     socket_transport_name_get(AF_UNIX, current_transport, 20);
 
-    if (strcmp(current_transport,transport) == 0)
+    if (strcmp(current_transport, transport) == 0)
         return socket(family, type, protocol);
 
     /* set the requested socket transport */
     if (socket_transport_name_set(AF_UNIX, transport))
         return -1;
 
-    socket_rc = socket(family,type,protocol);
+    socket_rc = socket(family, type, protocol);
 
     /* set mode back to what it was */
     if (socket_transport_name_set(AF_UNIX, current_transport))
@@ -135,7 +135,7 @@ int RAND_query_egd_bytes(const char *path, unsigned char *buf, int bytes)
     setbuf(fp, NULL);
 
     /* Try to connect */
-    for ( ; ; ) {
+    for (;;) {
         if (connect(fd, (struct sockaddr *)&addr, i) == 0)
             break;
 # ifdef EISCONN

@@ -25,6 +25,20 @@
 #include "crypto/evp.h"
 #include "evp_local.h"
 
+static void cleanup_old_md_data(EVP_MD_CTX *ctx, int force)
+{
+    if (ctx->digest != NULL) {
+        if (ctx->digest->cleanup != NULL
+                && !EVP_MD_CTX_test_flags(ctx, EVP_MD_CTX_FLAG_CLEANED))
+            ctx->digest->cleanup(ctx);
+        if (ctx->md_data != NULL && ctx->digest->ctx_size > 0
+                && (!EVP_MD_CTX_test_flags(ctx, EVP_MD_CTX_FLAG_REUSE)
+                    || force)) {
+            OPENSSL_clear_free(ctx->md_data, ctx->digest->ctx_size);
+            ctx->md_data = NULL;
+        }
+    }
+}
 
 void evp_md_ctx_clear_digest(EVP_MD_CTX *ctx, int force)
 {
@@ -41,12 +55,7 @@ void evp_md_ctx_clear_digest(EVP_MD_CTX *ctx, int force)
      * Don't assume ctx->md_data was cleaned in EVP_Digest_Final, because
      * sometimes only copies of the context are ever finalised.
      */
-    if (ctx->digest && ctx->digest->cleanup
-        && !EVP_MD_CTX_test_flags(ctx, EVP_MD_CTX_FLAG_CLEANED))
-        ctx->digest->cleanup(ctx);
-    if (ctx->digest && ctx->digest->ctx_size && ctx->md_data
-            && (!EVP_MD_CTX_test_flags(ctx, EVP_MD_CTX_FLAG_REUSE) || force))
-        OPENSSL_clear_free(ctx->md_data, ctx->digest->ctx_size);
+    cleanup_old_md_data(ctx, force);
     if (force)
         ctx->digest = NULL;
 
@@ -180,21 +189,20 @@ static int evp_md_init_internal(EVP_MD_CTX *ctx, const EVP_MD *type,
      * previous handle, re-querying for an ENGINE, and having a
      * reinitialisation, when it may all be unnecessary.
      */
-    if (ctx->engine && ctx->digest &&
-        (type == NULL || (type->type == ctx->digest->type)))
+    if (ctx->engine != NULL
+            && ctx->digest != NULL
+            && type->type == ctx->digest->type)
         goto skip_to_init;
 
-    if (type != NULL) {
-        /*
-         * Ensure an ENGINE left lying around from last time is cleared (the
-         * previous check attempted to avoid this if the same ENGINE and
-         * EVP_MD could be used).
-         */
-        ENGINE_finish(ctx->engine);
-        ctx->engine = NULL;
-    }
+    /*
+     * Ensure an ENGINE left lying around from last time is cleared (the
+     * previous check attempted to avoid this if the same ENGINE and
+     * EVP_MD could be used).
+     */
+    ENGINE_finish(ctx->engine);
+    ctx->engine = NULL;
 
-    if (type != NULL && impl == NULL)
+    if (impl == NULL)
         tmpimpl = ENGINE_get_digest_engine(type->type);
 #endif
 
@@ -202,12 +210,15 @@ static int evp_md_init_internal(EVP_MD_CTX *ctx, const EVP_MD *type,
      * If there are engines involved or EVP_MD_CTX_FLAG_NO_INIT is set then we
      * should use legacy handling for now.
      */
-    if (ctx->engine != NULL
-            || impl != NULL
-#if !defined(OPENSSL_NO_ENGINE) && !defined(FIPS_MODULE)
+    if (impl != NULL
+#if !defined(OPENSSL_NO_ENGINE)
+            || ctx->engine != NULL
+# if !defined(FIPS_MODULE)
             || tmpimpl != NULL
+# endif
 #endif
-            || (ctx->flags & EVP_MD_CTX_FLAG_NO_INIT) != 0) {
+            || (ctx->flags & EVP_MD_CTX_FLAG_NO_INIT) != 0
+            || type->origin == EVP_ORIG_METH) {
         if (ctx->digest == ctx->fetched_digest)
             ctx->digest = NULL;
         EVP_MD_free(ctx->fetched_digest);
@@ -215,10 +226,7 @@ static int evp_md_init_internal(EVP_MD_CTX *ctx, const EVP_MD *type,
         goto legacy;
     }
 
-    if (ctx->digest != NULL && ctx->digest->ctx_size > 0) {
-        OPENSSL_clear_free(ctx->md_data, ctx->digest->ctx_size);
-        ctx->md_data = NULL;
-    }
+    cleanup_old_md_data(ctx, 1);
 
     /* Start of non-legacy code below */
 
@@ -228,7 +236,10 @@ static int evp_md_init_internal(EVP_MD_CTX *ctx, const EVP_MD *type,
         ERR_raise(ERR_LIB_EVP, EVP_R_INITIALIZATION_ERROR);
         return 0;
 #else
-        EVP_MD *provmd = EVP_MD_fetch(NULL, OBJ_nid2sn(type->type), "");
+        /* The NULL digest is a special case */
+        EVP_MD *provmd = EVP_MD_fetch(NULL,
+                                      type->type != NID_undef ? OBJ_nid2sn(type->type)
+                                                              : "NULL", "");
 
         if (provmd == NULL) {
             ERR_raise(ERR_LIB_EVP, EVP_R_INITIALIZATION_ERROR);
@@ -304,10 +315,8 @@ static int evp_md_init_internal(EVP_MD_CTX *ctx, const EVP_MD *type,
     }
 #endif
     if (ctx->digest != type) {
-        if (ctx->digest && ctx->digest->ctx_size) {
-            OPENSSL_clear_free(ctx->md_data, ctx->digest->ctx_size);
-            ctx->md_data = NULL;
-        }
+        cleanup_old_md_data(ctx, 1);
+
         ctx->digest = type;
         if (!(ctx->flags & EVP_MD_CTX_FLAG_NO_INIT) && type->ctx_size) {
             ctx->update = type->update;
@@ -496,6 +505,17 @@ legacy:
     return ret;
 }
 
+EVP_MD_CTX *EVP_MD_CTX_dup(const EVP_MD_CTX *in)
+{
+    EVP_MD_CTX *out = EVP_MD_CTX_new();
+
+    if (out != NULL && !EVP_MD_CTX_copy_ex(out, in)) {
+        EVP_MD_CTX_free(out);
+        out = NULL;
+    }
+    return out;
+}
+
 int EVP_MD_CTX_copy(EVP_MD_CTX *out, const EVP_MD_CTX *in)
 {
     EVP_MD_CTX_reset(out);
@@ -506,9 +526,18 @@ int EVP_MD_CTX_copy_ex(EVP_MD_CTX *out, const EVP_MD_CTX *in)
 {
     unsigned char *tmp_buf;
 
-    if (in == NULL || in->digest == NULL) {
-        ERR_raise(ERR_LIB_EVP, EVP_R_INPUT_NOT_INITIALIZED);
+    if (in == NULL) {
+        ERR_raise(ERR_LIB_EVP, ERR_R_PASSED_NULL_PARAMETER);
         return 0;
+    }
+
+    if (in->digest == NULL) {
+        /* copying uninitialized digest context */
+        EVP_MD_CTX_reset(out);
+        if (out->fetched_digest != NULL)
+            EVP_MD_free(out->fetched_digest);
+        *out = *in;
+        goto clone_pkey;
     }
 
     if (in->digest->prov == NULL
@@ -539,6 +568,7 @@ int EVP_MD_CTX_copy_ex(EVP_MD_CTX *out, const EVP_MD_CTX *in)
         }
     }
 
+ clone_pkey:
     /* copied EVP_MD_CTX should free the copied EVP_PKEY_CTX */
     EVP_MD_CTX_clear_flags(out, EVP_MD_CTX_FLAG_KEEP_PKEY_CTX);
 #ifndef FIPS_MODULE

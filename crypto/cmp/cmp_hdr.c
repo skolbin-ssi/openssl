@@ -181,7 +181,8 @@ int ossl_cmp_hdr_push1_freeText(OSSL_CMP_PKIHEADER *hdr, ASN1_UTF8STRING *text)
         return 0;
 
     return
-        ossl_cmp_sk_ASN1_UTF8STRING_push_str(hdr->freeText, (char *)text->data);
+        ossl_cmp_sk_ASN1_UTF8STRING_push_str(hdr->freeText, (char *)text->data,
+                                             text->length);
 }
 
 int ossl_cmp_hdr_generalInfo_push0_item(OSSL_CMP_PKIHEADER *hdr,
@@ -275,8 +276,7 @@ int ossl_cmp_hdr_set_transactionID(OSSL_CMP_CTX *ctx, OSSL_CMP_PKIHEADER *hdr)
         if (!set_random(&ctx->transactionID, ctx,
                         OSSL_CMP_TRANSACTIONID_LENGTH))
             return 0;
-        tid = OPENSSL_buf2hexstr(ctx->transactionID->data,
-                                 ctx->transactionID->length);
+        tid = i2s_ASN1_OCTET_STRING(NULL, ctx->transactionID);
         if (tid != NULL)
             ossl_cmp_log1(DEBUG, ctx,
                           "Starting new transaction with ID=%s", tid);

@@ -1014,7 +1014,7 @@ WORK_STATE ossl_statem_server_post_work(SSL *s, WORK_STATE wst)
  *   1: Success
  *   0: Error
  */
-int ossl_statem_server_construct_message(SSL *s, WPACKET *pkt,
+int ossl_statem_server_construct_message(SSL *s,
                                          confunc_f *confunc, int *mt)
 {
     OSSL_STATEM *st = &s->statem;
@@ -1707,7 +1707,7 @@ static int tls_early_post_process_client_hello(SSL *s)
     s->s3.send_connection_binding = 0;
     /* Check what signalling cipher-suite values were received. */
     if (scsvs != NULL) {
-        for(i = 0; i < sk_SSL_CIPHER_num(scsvs); i++) {
+        for (i = 0; i < sk_SSL_CIPHER_num(scsvs); i++) {
             c = sk_SSL_CIPHER_value(scsvs, i);
             if (SSL_CIPHER_get_id(c) == SSL3_CK_SCSV) {
                 if (s->renegotiate) {
@@ -2899,7 +2899,7 @@ static int tls_process_cke_rsa(SSL *s, PACKET *pkt)
      * We must not leak whether a decryption failure occurs because of
      * Bleichenbacher's attack on PKCS #1 v1.5 RSA padding (see RFC 2246,
      * section 7.4.7.1). We use the special padding type
-     * RSA_PKCS1_WITH_TLS_PADDING to do that. It will automaticaly decrypt the
+     * RSA_PKCS1_WITH_TLS_PADDING to do that. It will automatically decrypt the
      * RSA, check the padding and check that the client version is as expected
      * in the premaster secret. If any of that fails then the function appears
      * to return successfully but with a random result. The call below could
@@ -3244,13 +3244,13 @@ static int tls_process_cke_gost18(SSL *s, PACKET *pkt)
 
     /* Reuse EVP_PKEY_CTRL_SET_IV, make choice in engine code depending on size */
     if (EVP_PKEY_CTX_ctrl(pkey_ctx, -1, EVP_PKEY_OP_DECRYPT,
-                          EVP_PKEY_CTRL_SET_IV, 32, rnd_dgst) < 0) {
+                          EVP_PKEY_CTRL_SET_IV, 32, rnd_dgst) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_LIBRARY_BUG);
         goto err;
     }
 
     if (EVP_PKEY_CTX_ctrl(pkey_ctx, -1, EVP_PKEY_OP_DECRYPT,
-                          EVP_PKEY_CTRL_CIPHER, cipher_nid, NULL) < 0) {
+                          EVP_PKEY_CTRL_CIPHER, cipher_nid, NULL) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_R_LIBRARY_BUG);
         goto err;
     }
@@ -3554,8 +3554,9 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL *s, PACKET *pkt)
     s->session->peer = sk_X509_shift(sk);
     s->session->verify_result = s->verify_result;
 
-    sk_X509_pop_free(s->session->peer_chain, X509_free);
+    OSSL_STACK_OF_X509_free(s->session->peer_chain);
     s->session->peer_chain = sk;
+    sk = NULL;
 
     /*
      * Freeze the handshake buffer. For <TLS1.3 we do this after the CKE
@@ -3570,7 +3571,6 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL *s, PACKET *pkt)
      * Inconsistency alert: cert_chain does *not* include the peer's own
      * certificate, while we do include it in statem_clnt.c
      */
-    sk = NULL;
 
     /* Save the current hash state for when we receive the CertificateVerify */
     if (SSL_IS_TLS13(s)) {
@@ -3589,7 +3589,7 @@ MSG_PROCESS_RETURN tls_process_client_certificate(SSL *s, PACKET *pkt)
 
  err:
     X509_free(x);
-    sk_X509_pop_free(sk, X509_free);
+    OSSL_STACK_OF_X509_free(sk);
     return ret;
 }
 

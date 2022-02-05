@@ -1105,7 +1105,7 @@ int do_ssl3_write(SSL *s, int type, const unsigned char *buf,
         }
 
         /* header is added by the kernel when using offload */
-        SSL3_RECORD_add_length(&wr[j], SSL3_RT_HEADER_LENGTH);
+        SSL3_RECORD_add_length(thiswr, SSL3_RT_HEADER_LENGTH);
 
         if (create_empty_fragment) {
             /*
@@ -1151,7 +1151,7 @@ int do_ssl3_write(SSL *s, int type, const unsigned char *buf,
     return -1;
 }
 
-/* if s->s3.wbuf.left != 0, we need to call this
+/* if SSL3_BUFFER_get_left() != 0, we need to call this
  *
  * Return values are as per SSL_write()
  */
@@ -1246,7 +1246,7 @@ int ssl3_write_pending(SSL *s, int type, const unsigned char *buf, size_t len,
  *
  * This function must handle any surprises the peer may have for us, such as
  * Alert records (e.g. close_notify) or renegotiation requests. ChangeCipherSpec
- * messages are treated as if they were handshake messages *if* the |recd_type|
+ * messages are treated as if they were handshake messages *if* the |recvd_type|
  * argument is non NULL.
  * Also if record payloads contain fragments too small to process, we store
  * them until there is enough for the respective protocol (the record protocol

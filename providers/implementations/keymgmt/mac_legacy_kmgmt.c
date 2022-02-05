@@ -109,7 +109,7 @@ int ossl_mac_key_up_ref(MAC_KEY *mackey)
 
     /* This is effectively doing a new operation on the MAC_KEY and should be
      * adequately guarded again modules' error states.  However, both current
-     * calls here are guarded propery in signature/mac_legacy.c.  Thus, it
+     * calls here are guarded properly in signature/mac_legacy.c.  Thus, it
      * could be removed here.  The concern is that something in the future
      * might call this function without adequate guards.  It's a cheap call,
      * it seems best to leave it even though it is currently redundant.
@@ -508,6 +508,7 @@ static void *mac_gen(void *genctx, OSSL_CALLBACK *cb, void *cbarg)
      * of this can be removed and we will only support the EVP_KDF APIs.
      */
     if (!ossl_prov_cipher_copy(&key->cipher, &gctx->cipher)) {
+        ossl_mac_key_free(key);
         ERR_raise(ERR_LIB_PROV, ERR_R_INTERNAL_ERROR);
         return NULL;
     }

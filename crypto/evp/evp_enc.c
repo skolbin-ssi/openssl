@@ -986,8 +986,10 @@ int EVP_CIPHER_CTX_set_key_length(EVP_CIPHER_CTX *c, int keylen)
 
         /* Check the cipher actually understands this parameter */
         if (OSSL_PARAM_locate_const(EVP_CIPHER_settable_ctx_params(c->cipher),
-                                    OSSL_CIPHER_PARAM_KEYLEN) == NULL)
+                                    OSSL_CIPHER_PARAM_KEYLEN) == NULL) {
+            ERR_raise(ERR_LIB_EVP, EVP_R_INVALID_KEY_LENGTH);
             return 0;
+        }
 
         params[0] = OSSL_PARAM_construct_size_t(OSSL_CIPHER_PARAM_KEYLEN, &len);
         ok = evp_do_ciph_ctx_setparams(c->cipher, c->algctx, params);
@@ -1342,6 +1344,17 @@ int EVP_CIPHER_CTX_rand_key(EVP_CIPHER_CTX *ctx, unsigned char *key)
         return 1;
     }
 #endif /* FIPS_MODULE */
+}
+
+EVP_CIPHER_CTX *EVP_CIPHER_CTX_dup(const EVP_CIPHER_CTX *in)
+{
+    EVP_CIPHER_CTX *out = EVP_CIPHER_CTX_new();
+
+    if (out != NULL && !EVP_CIPHER_CTX_copy(out, in)) {
+        EVP_CIPHER_CTX_free(out);
+        out = NULL;
+    }
+    return out;
 }
 
 int EVP_CIPHER_CTX_copy(EVP_CIPHER_CTX *out, const EVP_CIPHER_CTX *in)

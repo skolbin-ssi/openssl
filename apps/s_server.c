@@ -131,12 +131,12 @@ static unsigned int psk_server_cb(SSL *ssl, const char *identity,
     if (s_debug)
         BIO_printf(bio_s_out, "psk_server_cb\n");
 
-    if (SSL_version(ssl) >= TLS1_3_VERSION) {
+    if (!SSL_is_dtls(ssl) && SSL_version(ssl) >= TLS1_3_VERSION) {
         /*
-         * This callback is designed for use in TLSv1.2. It is possible to use
-         * a single callback for all protocol versions - but it is preferred to
-         * use a dedicated callback for TLSv1.3. For TLSv1.3 we have
-         * psk_find_session_cb.
+         * This callback is designed for use in (D)TLSv1.2 (or below). It is
+         * possible to use a single callback for all protocol versions - but it
+         * is preferred to use a dedicated callback for TLSv1.3. For TLSv1.3 we
+         * have psk_find_session_cb.
          */
         return 0;
     }
@@ -716,7 +716,7 @@ typedef enum OPTION_choice {
     OPT_SRTP_PROFILES, OPT_KEYMATEXPORT, OPT_KEYMATEXPORTLEN,
     OPT_KEYLOG_FILE, OPT_MAX_EARLY, OPT_RECV_MAX_EARLY, OPT_EARLY_DATA,
     OPT_S_NUM_TICKETS, OPT_ANTI_REPLAY, OPT_NO_ANTI_REPLAY, OPT_SCTP_LABEL_BUG,
-    OPT_HTTP_SERVER_BINMODE, OPT_NOCANAMES, OPT_IGNORE_UNEXPECTED_EOF,
+    OPT_HTTP_SERVER_BINMODE, OPT_NOCANAMES, OPT_IGNORE_UNEXPECTED_EOF, OPT_KTLS,
     OPT_R_ENUM,
     OPT_S_ENUM,
     OPT_V_ENUM,
@@ -958,6 +958,7 @@ const OPTIONS s_server_options[] = {
     {"alpn", OPT_ALPN, 's',
      "Set the advertised protocols for the ALPN extension (comma-separated list)"},
 #ifndef OPENSSL_NO_KTLS
+    {"ktls", OPT_KTLS, '-', "Enable Kernel TLS for sending and receiving"},
     {"sendfile", OPT_SENDFILE, '-', "Use sendfile to response file with -WWW"},
 #endif
 
@@ -1053,6 +1054,9 @@ int s_server_main(int argc, char *argv[])
     int sctp_label_bug = 0;
 #endif
     int ignore_unexpected_eof = 0;
+#ifndef OPENSSL_NO_KTLS
+    int enable_ktls = 0;
+#endif
 
     /* Init of few remaining global variables */
     local_argc = argc;
@@ -1627,6 +1631,11 @@ int s_server_main(int argc, char *argv[])
         case OPT_NOCANAMES:
             no_ca_names = 1;
             break;
+        case OPT_KTLS:
+#ifndef OPENSSL_NO_KTLS
+            enable_ktls = 1;
+#endif
+            break;
         case OPT_SENDFILE:
 #ifndef OPENSSL_NO_KTLS
             use_sendfile = 1;
@@ -1639,8 +1648,7 @@ int s_server_main(int argc, char *argv[])
     }
 
     /* No extra arguments. */
-    argc = opt_num_rest();
-    if (argc != 0)
+    if (!opt_check_rest_arg(NULL))
         goto opthelp;
 
     if (!app_RAND_load())
@@ -1694,6 +1702,11 @@ int s_server_main(int argc, char *argv[])
 #endif
 
 #ifndef OPENSSL_NO_KTLS
+    if (use_sendfile && enable_ktls == 0) {
+        BIO_printf(bio_out, "Warning: -sendfile depends on -ktls, enabling -ktls now.\n");
+        enable_ktls = 1;
+    }
+
     if (use_sendfile && www <= 1) {
         BIO_printf(bio_err, "Can't use -sendfile without -WWW or -HTTP\n");
         goto end;
@@ -1883,6 +1896,10 @@ int s_server_main(int argc, char *argv[])
 
     if (ignore_unexpected_eof)
         SSL_CTX_set_options(ctx, SSL_OP_IGNORE_UNEXPECTED_EOF);
+#ifndef OPENSSL_NO_KTLS
+    if (enable_ktls)
+        SSL_CTX_set_options(ctx, SSL_OP_ENABLE_KTLS);
+#endif
 
     if (max_send_fragment > 0
         && !SSL_CTX_set_max_send_fragment(ctx, max_send_fragment)) {
@@ -2223,8 +2240,8 @@ int s_server_main(int argc, char *argv[])
     X509_free(s_dcert);
     EVP_PKEY_free(s_key);
     EVP_PKEY_free(s_dkey);
-    sk_X509_pop_free(s_chain, X509_free);
-    sk_X509_pop_free(s_dchain, X509_free);
+    OSSL_STACK_OF_X509_free(s_chain);
+    OSSL_STACK_OF_X509_free(s_dchain);
     OPENSSL_free(pass);
     OPENSSL_free(dpass);
     OPENSSL_free(host);
@@ -2930,8 +2947,9 @@ static void print_connection_info(SSL *con)
 #endif
     if (SSL_session_reused(con))
         BIO_printf(bio_s_out, "Reused session-id\n");
-    BIO_printf(bio_s_out, "Secure Renegotiation IS%s supported\n",
-               SSL_get_secure_renegotiation_support(con) ? "" : " NOT");
+
+    ssl_print_secure_renegotiation_notes(bio_s_out, con);
+
     if ((SSL_get_options(con) & SSL_OP_NO_RENEGOTIATION))
         BIO_printf(bio_s_out, "Renegotiation is DISABLED\n");
 
@@ -2940,11 +2958,11 @@ static void print_connection_info(SSL *con)
         BIO_printf(bio_s_out, "    Label: '%s'\n", keymatexportlabel);
         BIO_printf(bio_s_out, "    Length: %i bytes\n", keymatexportlen);
         exportedkeymat = app_malloc(keymatexportlen, "export key");
-        if (!SSL_export_keying_material(con, exportedkeymat,
+        if (SSL_export_keying_material(con, exportedkeymat,
                                         keymatexportlen,
                                         keymatexportlabel,
                                         strlen(keymatexportlabel),
-                                        NULL, 0, 0)) {
+                                        NULL, 0, 0) <= 0) {
             BIO_printf(bio_s_out, "    Error\n");
         } else {
             BIO_printf(bio_s_out, "    Keying material: ");
@@ -2966,7 +2984,7 @@ static void print_connection_info(SSL *con)
 
 static int www_body(int s, int stype, int prot, unsigned char *context)
 {
-    char *buf = NULL;
+    char *buf = NULL, *p;
     int ret = 1;
     int i, j, k, dot;
     SSL *con;
@@ -2982,7 +3000,9 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
     /* Set width for a select call if needed */
     width = s + 1;
 
-    buf = app_malloc(bufsize, "server www buffer");
+    /* as we use BIO_gets(), and it always null terminates data, we need
+     * to allocate 1 byte longer buffer to fit the full 2^14 byte record */
+    p = buf = app_malloc(bufsize + 1, "server www buffer");
     io = BIO_new(BIO_f_buffer());
     ssl_bio = BIO_new(BIO_f_ssl());
     if ((io == NULL) || (ssl_bio == NULL))
@@ -3047,7 +3067,7 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
     }
 
     for (;;) {
-        i = BIO_gets(io, buf, bufsize - 1);
+        i = BIO_gets(io, buf, bufsize + 1);
         if (i < 0) {            /* error */
             if (!BIO_should_retry(io) && !SSL_waiting_for_async(con)) {
                 if (!s_quiet)
@@ -3074,15 +3094,14 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
         }
 
         /* else we have data */
-        if (((www == 1) && (strncmp("GET ", buf, 4) == 0)) ||
-            ((www == 2) && (strncmp("GET /stats ", buf, 11) == 0))) {
-            char *p;
+        if ((www == 1 && HAS_PREFIX(buf, "GET "))
+             || (www == 2 && HAS_PREFIX(buf, "GET /stats "))) {
             X509 *peer = NULL;
             STACK_OF(SSL_CIPHER) *sk;
             static const char *space = "                          ";
 
-            if (www == 1 && strncmp("GET /reneg", buf, 10) == 0) {
-                if (strncmp("GET /renegcert", buf, 14) == 0)
+            if (www == 1 && HAS_PREFIX(buf, "GET /reneg")) {
+                if (HAS_PREFIX(buf, "GET /renegcert"))
                     SSL_set_verify(con,
                                    SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE,
                                    NULL);
@@ -3112,7 +3131,7 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
                  * we're expecting to come from the client. If they haven't
                  * sent one there's not much we can do.
                  */
-                BIO_gets(io, buf, bufsize - 1);
+                BIO_gets(io, buf, bufsize + 1);
             }
 
             BIO_puts(io,
@@ -3123,6 +3142,7 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
             BIO_puts(io, "\n");
             for (i = 0; i < local_argc; i++) {
                 const char *myp;
+
                 for (myp = local_argv[i]; *myp; myp++)
                     switch (*myp) {
                     case '<':
@@ -3142,10 +3162,7 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
             }
             BIO_puts(io, "\n");
 
-            BIO_printf(io,
-                       "Secure Renegotiation IS%s supported\n",
-                       SSL_get_secure_renegotiation_support(con) ?
-                       "" : " NOT");
+            ssl_print_secure_renegotiation_notes(io, con);
 
             /*
              * The following is evil and should not really be done
@@ -3205,15 +3222,11 @@ static int www_body(int s, int stype, int prot, unsigned char *context)
             }
             BIO_puts(io, "</pre></BODY></HTML>\r\n\r\n");
             break;
-        } else if ((www == 2 || www == 3)
-                   && (strncmp("GET /", buf, 5) == 0)) {
+        } else if ((www == 2 || www == 3) && CHECK_AND_SKIP_PREFIX(p, "GET /")) {
             BIO *file;
-            char *p, *e;
+            char *e;
             static const char *text =
                 "HTTP/1.0 200 ok\r\nContent-type: text/plain\r\n\r\n";
-
-            /* skip the '/' */
-            p = &(buf[5]);
 
             dot = 1;
             for (e = p; *e != '\0'; e++) {
@@ -3401,7 +3414,9 @@ static int rev_body(int s, int stype, int prot, unsigned char *context)
     SSL *con;
     BIO *io, *ssl_bio, *sbio;
 
-    buf = app_malloc(bufsize, "server rev buffer");
+    /* as we use BIO_gets(), and it always null terminates data, we need
+     * to allocate 1 byte longer buffer to fit the full 2^14 byte record */
+    buf = app_malloc(bufsize + 1, "server rev buffer");
     io = BIO_new(BIO_f_buffer());
     ssl_bio = BIO_new(BIO_f_ssl());
     if ((io == NULL) || (ssl_bio == NULL))
@@ -3476,7 +3491,7 @@ static int rev_body(int s, int stype, int prot, unsigned char *context)
     print_ssl_summary(con);
 
     for (;;) {
-        i = BIO_gets(io, buf, bufsize - 1);
+        i = BIO_gets(io, buf, bufsize + 1);
         if (i < 0) {            /* error */
             if (!BIO_should_retry(io)) {
                 if (!s_quiet)
@@ -3507,7 +3522,7 @@ static int rev_body(int s, int stype, int prot, unsigned char *context)
                 p--;
                 i--;
             }
-            if (!s_ign_eof && (i == 5) && (strncmp(buf, "CLOSE", 5) == 0)) {
+            if (!s_ign_eof && i == 5 && HAS_PREFIX(buf, "CLOSE")) {
                 ret = 1;
                 BIO_printf(bio_err, "CONNECTION CLOSED\n");
                 goto end;

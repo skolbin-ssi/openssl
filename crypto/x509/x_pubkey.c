@@ -170,7 +170,7 @@ static int x509_pubkey_ex_d2i_ex(ASN1_VALUE **pval,
 
     /*
      * Try to decode with legacy method first.  This ensures that engines
-     * aren't overriden by providers.
+     * aren't overridden by providers.
      */
     if ((ret = x509_pubkey_decode(&pubkey->pkey, pubkey)) == -1) {
         /* -1 indicates a fatal error, like malloc failure */
@@ -289,14 +289,28 @@ X509_PUBKEY *X509_PUBKEY_dup(const X509_PUBKEY *a)
             || (pubkey->algor = X509_ALGOR_dup(a->algor)) == NULL
             || (pubkey->public_key = ASN1_BIT_STRING_new()) == NULL
             || !ASN1_BIT_STRING_set(pubkey->public_key,
-                                    a->public_key->data, a->public_key->length)
-            || (a->pkey != NULL && !EVP_PKEY_up_ref(a->pkey))) {
+                                    a->public_key->data,
+                                    a->public_key->length)) {
         x509_pubkey_ex_free((ASN1_VALUE **)&pubkey,
                             ASN1_ITEM_rptr(X509_PUBKEY_INTERNAL));
         ERR_raise(ERR_LIB_X509, ERR_R_MALLOC_FAILURE);
         return NULL;
     }
-    pubkey->pkey = a->pkey;
+
+    if (a->pkey != NULL) {
+        ERR_set_mark();
+        pubkey->pkey = EVP_PKEY_dup(a->pkey);
+        if (pubkey->pkey == NULL) {
+            pubkey->flag_force_legacy = 1;
+            if (x509_pubkey_decode(&pubkey->pkey, pubkey) <= 0) {
+                x509_pubkey_ex_free((ASN1_VALUE **)&pubkey,
+                                    ASN1_ITEM_rptr(X509_PUBKEY_INTERNAL));
+                ERR_clear_last_mark();
+                return NULL;
+            }
+        }
+        ERR_pop_to_mark();
+    }
     return pubkey;
 }
 

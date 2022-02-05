@@ -37,6 +37,10 @@ int ktls_check_supported_cipher(const SSL *s, const EVP_CIPHER *c,
     case SSL_AES128GCM:
     case SSL_AES256GCM:
         return 1;
+# ifdef OPENSSL_KTLS_CHACHA20_POLY1305
+    case SSL_CHACHA20POLY1305:
+        return 1;
+# endif
     case SSL_AES128:
     case SSL_AES256:
         if (s->ext.use_etm)
@@ -71,6 +75,12 @@ int ktls_configure_crypto(const SSL *s, const EVP_CIPHER *c, EVP_CIPHER_CTX *dd,
         else
             crypto_info->iv_len = EVP_GCM_TLS_FIXED_IV_LEN;
         break;
+# ifdef OPENSSL_KTLS_CHACHA20_POLY1305
+    case SSL_CHACHA20POLY1305:
+        crypto_info->cipher_algorithm = CRYPTO_CHACHA20_POLY1305;
+        crypto_info->iv_len = EVP_CIPHER_CTX_get_iv_length(dd);
+        break;
+# endif
     case SSL_AES128:
     case SSL_AES256:
         switch (s->s3.tmp.new_cipher->algorithm_mac) {
@@ -129,28 +139,28 @@ int ktls_check_supported_cipher(const SSL *s, const EVP_CIPHER *c,
     /* check that cipher is AES_GCM_128, AES_GCM_256, AES_CCM_128 
      * or Chacha20-Poly1305
      */
-    switch (EVP_CIPHER_get_nid(c))
-    {
 # ifdef OPENSSL_KTLS_AES_CCM_128
-    case NID_aes_128_ccm:
+    if (EVP_CIPHER_is_a(c, "AES-128-CCM")) {
         if (s->version == TLS_1_3_VERSION /* broken on 5.x kernels */
             || EVP_CIPHER_CTX_get_tag_length(dd) != EVP_CCM_TLS_TAG_LEN)
-          return 0;
+            return 0;
+        return 1;
+    } else
 # endif
+    if (0
 # ifdef OPENSSL_KTLS_AES_GCM_128
-        /* Fall through */
-    case NID_aes_128_gcm:
+        || EVP_CIPHER_is_a(c, "AES-128-GCM")
 # endif
 # ifdef OPENSSL_KTLS_AES_GCM_256
-    case NID_aes_256_gcm:
+        || EVP_CIPHER_is_a(c, "AES-256-GCM")
 # endif
 # ifdef OPENSSL_KTLS_CHACHA20_POLY1305
-    case NID_chacha20_poly1305:
+        || EVP_CIPHER_is_a(c, "ChaCha20-Poly1305")
 # endif
+        ) {
         return 1;
-    default:
-        return 0;
     }
+    return 0;
 }
 
 /* Function to configure kernel TLS structure */

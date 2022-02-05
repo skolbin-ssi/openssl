@@ -272,29 +272,6 @@ static CMS_ContentInfo *load_content_info(int informat, BIO *in, int flags,
     return NULL;
 }
 
-static void warn_binary(const char *file)
-{
-    BIO *bio;
-    unsigned char linebuf[1024], *cur, *end;
-    int len;
-
-    if ((bio = bio_open_default(file, 'r', FORMAT_BINARY)) == NULL)
-        return; /* cannot give a proper warning since there is an error */
-    while ((len = BIO_read(bio, linebuf, sizeof(linebuf))) > 0) {
-        end = linebuf + len;
-        for (cur = linebuf; cur < end; cur++) {
-            if (*cur == '\0' || *cur >= 0x80) {
-                BIO_printf(bio_err, "Warning: input file '%s' contains %s"
-                           " character; better use -binary option\n",
-                           file, *cur == '\0' ? "NUL" : "8-bit");
-                goto end;
-            }
-        }
-    }
- end:
-    BIO_free(bio);
-}
-
 int cms_main(int argc, char **argv)
 {
     CONF *conf = NULL;
@@ -337,6 +314,7 @@ int cms_main(int argc, char **argv)
     if (encerts == NULL || vpm == NULL)
         goto end;
 
+    opt_set_unknown_name("cipher");
     prog = opt_init(argc, argv, cms_options);
     while ((o = opt_next()) != OPT_EOF) {
         switch (o) {
@@ -482,13 +460,9 @@ int cms_main(int argc, char **argv)
             rr_allorfirst = 1;
             break;
         case OPT_RCTFORM:
-            if (rctformat == FORMAT_ASN1) {
-                if (!opt_format(opt_arg(),
-                                OPT_FMT_PEMDER | OPT_FMT_SMIME, &rctformat))
-                    goto opthelp;
-            } else {
-                rcms = load_content_info(rctformat, rctin, 0, NULL, "recipient");
-            }
+            if (!opt_format(opt_arg(),
+                            OPT_FMT_PEMDER | OPT_FMT_SMIME, &rctformat))
+                goto opthelp;
             break;
         case OPT_CERTFILE:
             certfile = opt_arg();
@@ -707,7 +681,7 @@ int cms_main(int argc, char **argv)
                 goto end;
             break;
         case OPT_WRAP:
-            wrapname = opt_unknown();
+            wrapname = opt_arg();
             break;
         case OPT_AES128_WRAP:
         case OPT_AES192_WRAP:
@@ -724,10 +698,8 @@ int cms_main(int argc, char **argv)
         if (!opt_md(digestname, &sign_md))
             goto end;
     }
-    if (ciphername != NULL) {
-        if (!opt_cipher_any(ciphername, &cipher))
-            goto end;
-    }
+    if (!opt_cipher_any(ciphername, &cipher))
+        goto end;
     if (wrapname != NULL) {
         if (!opt_cipher_any(wrapname, &wrap_cipher))
             goto end;
@@ -913,8 +885,6 @@ int cms_main(int argc, char **argv)
             goto end;
     }
 
-    if ((flags & CMS_BINARY) == 0)
-        warn_binary(infile);
     in = bio_open_default(infile, 'r',
                           binary_files ? FORMAT_BINARY : informat);
     if (in == NULL)
@@ -926,8 +896,6 @@ int cms_main(int argc, char **argv)
             goto end;
         if (contfile != NULL) {
             BIO_free(indata);
-            if ((flags & CMS_BINARY) == 0)
-                warn_binary(contfile);
             if ((indata = BIO_new_file(contfile, "rb")) == NULL) {
                 BIO_printf(bio_err, "Can't read content file %s\n", contfile);
                 goto end;
@@ -942,7 +910,7 @@ int cms_main(int argc, char **argv)
                 ret = 5;
                 goto end;
             }
-            sk_X509_pop_free(allcerts, X509_free);
+            OSSL_STACK_OF_X509_free(allcerts);
         }
     }
 
@@ -954,7 +922,7 @@ int cms_main(int argc, char **argv)
             goto end;
         }
 
-        rcms = load_content_info(rctformat, rctin, 0, NULL, "recipient");
+        rcms = load_content_info(rctformat, rctin, 0, NULL, "receipt");
         if (rcms == NULL)
             goto end;
     }
@@ -1270,8 +1238,8 @@ int cms_main(int argc, char **argv)
  end:
     if (ret)
         ERR_print_errors(bio_err);
-    sk_X509_pop_free(encerts, X509_free);
-    sk_X509_pop_free(other, X509_free);
+    OSSL_STACK_OF_X509_free(encerts);
+    OSSL_STACK_OF_X509_free(other);
     X509_VERIFY_PARAM_free(vpm);
     sk_OPENSSL_STRING_free(sksigners);
     sk_OPENSSL_STRING_free(skkeys);

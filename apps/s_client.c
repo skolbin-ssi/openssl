@@ -467,6 +467,7 @@ typedef enum OPTION_choice {
     OPT_DANE_TLSA_RRDATA, OPT_DANE_EE_NO_NAME,
     OPT_ENABLE_PHA,
     OPT_SCTP_LABEL_BUG,
+    OPT_KTLS,
     OPT_R_ENUM, OPT_PROV_ENUM
 } OPTION_CHOICE;
 
@@ -664,6 +665,9 @@ const OPTIONS s_client_options[] = {
     {"srp_strength", OPT_SRP_STRENGTH, 'p',
      "(deprecated) Minimal length in bits for N"},
 #endif
+#ifndef OPENSSL_NO_KTLS
+    {"ktls", OPT_KTLS, '-', "Enable Kernel TLS for sending and receiving"},
+#endif
 
     OPT_R_OPTIONS,
     OPT_S_OPTIONS,
@@ -843,6 +847,7 @@ int s_client_main(int argc, char **argv)
     struct timeval tv;
 #endif
     const char *servername = NULL;
+    char *sname_alloc = NULL;
     int noservername = 0;
     const char *alpn_in = NULL;
     tlsextctx tlsextcbp = { NULL, 0 };
@@ -888,6 +893,9 @@ int s_client_main(int argc, char **argv)
     int sctp_label_bug = 0;
 #endif
     int ignore_unexpected_eof = 0;
+#ifndef OPENSSL_NO_KTLS
+    int enable_ktls = 0;
+#endif
 
     FD_ZERO(&readfds);
     FD_ZERO(&writefds);
@@ -1457,12 +1465,16 @@ int s_client_main(int argc, char **argv)
         case OPT_ENABLE_PHA:
             enable_pha = 1;
             break;
+        case OPT_KTLS:
+#ifndef OPENSSL_NO_KTLS
+            enable_ktls = 1;
+#endif
+            break;
         }
     }
 
     /* Optional argument is connect string if -connect not used. */
-    argc = opt_num_rest();
-    if (argc == 1) {
+    if (opt_num_rest() == 1) {
         /* Don't allow -connect and a separate argument. */
         if (connectstr != NULL) {
             BIO_printf(bio_err,
@@ -1472,7 +1484,7 @@ int s_client_main(int argc, char **argv)
         }
         connect_type = use_inet;
         freeandcopy(&connectstr, *opt_rest());
-    } else if (argc != 0) {
+    } else if (!opt_check_rest_arg(NULL)) {
         goto opthelp;
     }
     if (!app_RAND_load())
@@ -1528,6 +1540,14 @@ int s_client_main(int argc, char **argv)
         if (host == NULL || port == NULL) {
             BIO_printf(bio_err, "%s: -proxy requires use of -connect or target parameter\n", prog);
             goto opthelp;
+        }
+
+        if (servername == NULL && !noservername) {
+            servername = sname_alloc = OPENSSL_strdup(host);
+            if (sname_alloc == NULL) {
+                BIO_printf(bio_err, "%s: out of memory\n", prog);
+                goto end;
+            }
         }
 
         /* Retain the original target host:port for use in the HTTP proxy connect string */
@@ -1700,6 +1720,10 @@ int s_client_main(int argc, char **argv)
 
     if (ignore_unexpected_eof)
         SSL_CTX_set_options(ctx, SSL_OP_IGNORE_UNEXPECTED_EOF);
+#ifndef OPENSSL_NO_KTLS
+    if (enable_ktls)
+        SSL_CTX_set_options(ctx, SSL_OP_ENABLE_KTLS);
+#endif
 
     if (vpmtouched && !SSL_CTX_set1_param(ctx, vpm)) {
         BIO_printf(bio_err, "Error setting verify params\n");
@@ -1955,7 +1979,7 @@ int s_client_main(int argc, char **argv)
 
     if (!noservername && (servername != NULL || dane_tlsa_domain == NULL)) {
         if (servername == NULL) {
-            if(host == NULL || is_dNS_name(host))
+            if (host == NULL || is_dNS_name(host))
                 servername = (host == NULL) ? "localhost" : host;
         }
         if (servername != NULL && !SSL_set_tlsext_host_name(con, servername)) {
@@ -2514,7 +2538,7 @@ int s_client_main(int argc, char **argv)
                  */
                 if (mbuf_len > 1 && mbuf[0] == '"') {
                     make_uppercase(mbuf);
-                    if (strncmp(mbuf, "\"STARTTLS\"", 10) == 0)
+                    if (HAS_PREFIX(mbuf, "\"STARTTLS\""))
                         foundit = 1;
                 }
             } while (mbuf_len > 1 && mbuf[0] == '"');
@@ -2542,7 +2566,7 @@ int s_client_main(int argc, char **argv)
              */
             strncpy(sbuf, mbuf, 2);
             make_uppercase(sbuf);
-            if (strncmp(sbuf, "OK", 2) != 0) {
+            if (!HAS_PREFIX(sbuf, "OK")) {
                 BIO_printf(bio_err, "STARTTLS not supported: %s", mbuf);
                 goto shut;
             }
@@ -2968,7 +2992,7 @@ int s_client_main(int argc, char **argv)
                 BIO_printf(bio_err, "RENEGOTIATING\n");
                 SSL_renegotiate(con);
                 cbuf_len = 0;
-            } else if (!c_ign_eof && (cbuf[0] == 'K' || cbuf[0] == 'k' )
+            } else if (!c_ign_eof && (cbuf[0] == 'K' || cbuf[0] == 'k')
                     && cmdletters) {
                 BIO_printf(bio_err, "KEYUPDATE\n");
                 SSL_key_update(con,
@@ -3033,13 +3057,16 @@ int s_client_main(int argc, char **argv)
     X509_free(cert);
     sk_X509_CRL_pop_free(crls, X509_CRL_free);
     EVP_PKEY_free(key);
-    sk_X509_pop_free(chain, X509_free);
+    OSSL_STACK_OF_X509_free(chain);
     OPENSSL_free(pass);
 #ifndef OPENSSL_NO_SRP
     OPENSSL_free(srp_arg.srppassin);
 #endif
+    OPENSSL_free(sname_alloc);
     OPENSSL_free(connectstr);
     OPENSSL_free(bindstr);
+    OPENSSL_free(bindhost);
+    OPENSSL_free(bindport);
     OPENSSL_free(host);
     OPENSSL_free(port);
     OPENSSL_free(thost);
@@ -3178,8 +3205,9 @@ static void print_stuff(BIO *bio, SSL *s, int full)
         BIO_printf(bio, "Server public key is %d bit\n",
                    EVP_PKEY_get_bits(pktmp));
     }
-    BIO_printf(bio, "Secure Renegotiation IS%s supported\n",
-               SSL_get_secure_renegotiation_support(s) ? "" : " NOT");
+
+    ssl_print_secure_renegotiation_notes(bio, s);
+
 #ifndef OPENSSL_NO_COMP
     comp = SSL_get_current_compression(s);
     expansion = SSL_get_current_expansion(s);
@@ -3276,11 +3304,11 @@ static void print_stuff(BIO *bio, SSL *s, int full)
         BIO_printf(bio, "    Label: '%s'\n", keymatexportlabel);
         BIO_printf(bio, "    Length: %i bytes\n", keymatexportlen);
         exportedkeymat = app_malloc(keymatexportlen, "export key");
-        if (!SSL_export_keying_material(s, exportedkeymat,
+        if (SSL_export_keying_material(s, exportedkeymat,
                                         keymatexportlen,
                                         keymatexportlabel,
                                         strlen(keymatexportlabel),
-                                        NULL, 0, 0)) {
+                                        NULL, 0, 0) <= 0) {
             BIO_printf(bio, "    Error\n");
         } else {
             BIO_printf(bio, "    Keying material: ");

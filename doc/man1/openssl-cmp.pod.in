@@ -48,10 +48,10 @@ Certificate enrollment and revocation options:
 Message transfer options:
 
 [B<-server> I<[http[s]://][userinfo@]host[:port][/path][?query][#fragment]>]
-[B<-path> I<remote_path>]
 [B<-proxy> I<[http[s]://][userinfo@]host[:port][/path][?query][#fragment]>]
 [B<-no_proxy> I<addresses>]
 [B<-recipient> I<name>]
+[B<-path> I<remote_path>]
 [B<-keep_alive> I<value>]
 [B<-msg_timeout> I<seconds>]
 [B<-total_timeout> I<seconds>]
@@ -123,6 +123,7 @@ Mock server options:
 [B<-srv_keypass> I<arg>]
 [B<-srv_trusted> I<filenames>|I<uris>]
 [B<-srv_untrusted> I<filenames>|I<uris>]
+[B<-ref_cert> I<filename>|I<uri>]
 [B<-rsp_cert> I<filename>|I<uri>]
 [B<-rsp_extracerts> I<filenames>|I<uris>]
 [B<-rsp_capubs> I<filenames>|I<uris>]
@@ -312,7 +313,8 @@ contained the given PKCS#10 CSR, overriding any extensions with same OIDs.
 
 =item B<-sans> I<spec>
 
-One or more IP addresses, DNS names, or URIs separated by commas or whitespace
+One or more IP addresses, email addresses, DNS names, or URIs
+separated by commas or whitespace
 (where in the latter case the whole argument must be enclosed in "...")
 to add as Subject Alternative Name(s) (SAN) certificate request extension.
 If the special element "critical" is given the SANs are flagged as critical.
@@ -440,18 +442,15 @@ Reason numbers defined in RFC 5280 are:
 
 =item B<-server> I<[http[s]://][userinfo@]host[:port][/path][?query][#fragment]>
 
-The IP address or DNS hostname and optionally port
-of the CMP server to connect to using HTTP(S) transport.
-The scheme C<https> may be given only if the B<-tls_used> option is used.
+The DNS hostname or IP address and optionally port
+of the CMP server to connect to using HTTP(S).
+This excludes I<-port> and I<-use_mock_srv> and is ignored with I<-rspin>.
+
+The scheme C<https> may be given only if the B<-tls_used> option is provided.
 In this case the default port is 443, else 80.
 The optional userinfo and fragment components are ignored.
 Any given query component is handled as part of the path component.
 If a path is included it provides the default value for the B<-path> option.
-
-=item B<-path> I<remote_path>
-
-HTTP path at the CMP server (aka CMP alias) to use for POST requests.
-Defaults to any path given with B<-server>, else C<"/">.
 
 =item B<-proxy> I<[http[s]://][userinfo@]host[:port][/path][?query][#fragment]>
 
@@ -459,10 +458,11 @@ The HTTP(S) proxy server to use for reaching the CMP server unless B<-no_proxy>
 applies, see below.
 The proxy port defaults to 80 or 443 if the scheme is C<https>; apart from that
 the optional C<http://> or C<https://> prefix is ignored (note that TLS may be
-selected by B<-tls_used>), as well as any path, userinfo, and query, and fragment
+enabled by B<-tls_used>), as well as any path, userinfo, and query, and fragment
 components.
 Defaults to the environment variable C<http_proxy> if set, else C<HTTP_PROXY>
 in case no TLS is used, otherwise C<https_proxy> if set, else C<HTTPS_PROXY>.
+This option is ignored if I<-server> is not given.
 
 =item B<-no_proxy> I<addresses>
 
@@ -470,6 +470,7 @@ List of IP addresses and/or DNS names of servers
 not to use an HTTP(S) proxy for, separated by commas and/or whitespace
 (where in the latter case the whole argument must be enclosed in "...").
 Default is from the environment variable C<no_proxy> if set, else C<NO_PROXY>.
+This option is ignored if I<-server> is not given.
 
 =item B<-recipient> I<name>
 
@@ -486,6 +487,11 @@ as far as any of those is present, else the NULL-DN as last resort.
 
 The argument must be formatted as I</type0=value0/type1=value1/type2=...>.
 For details see the description of the B<-subject> option.
+
+=item B<-path> I<remote_path>
+
+HTTP path at the CMP server (aka CMP alias) to use for POST requests.
+Defaults to any path given with B<-server>, else C<"/">.
 
 =item B<-keep_alive> I<value>
 
@@ -794,12 +800,17 @@ B<-tls_key>.
 
 =item B<-tls_used>
 
-Enable using TLS (even when other TLS_related options are not set)
-when connecting to CMP server.
+Enable using TLS (even when other TLS-related options are not set)
+for message exchange with CMP server via HTTP.
+This option is not supported with the I<-port> option
+and is ignored with the I<-use_mock_srv> and I<-rspin> options
+or if the I<-server> option is not given.
+
+The following TLS-related options are ignored if B<-tls_used> is not given.
 
 =item B<-tls_cert> I<filename>|I<uri>
 
-Client's TLS certificate.
+Client's TLS certificate to use for authenticating to the TLS server.
 If the source includes further certs they are used (along with B<-untrusted>
 certs) for constructing the client cert chain provided to the TLS server.
 
@@ -818,7 +829,7 @@ L<openssl-passphrase-options(1)>.
 
 =item B<-tls_extra> I<filenames>|I<uris>
 
-Extra certificates to provide to TLS server during TLS handshake
+Extra certificates to provide to the TLS server during handshake.
 
 =item B<-tls_trusted> I<filenames>|I<uris>
 
@@ -835,7 +846,7 @@ have no effect on the certificate verification enabled via this option.
 
 =item B<-tls_host> I<name>
 
-Address to be checked during hostname validation. 
+Address to be checked during hostname validation.
 This may be a DNS name or an IP address.
 If not given it defaults to the B<-server> address.
 
@@ -880,6 +891,7 @@ As many files are written as needed to store the complete transaction.
 =item B<-rspin> I<filenames>
 
 Process sequence of CMP responses provided in file(s), skipping server.
+This excludes I<-server>, I<-port>, and I<-use_mock_srv>.
 
 Multiple filenames may be given, separated by commas and/or whitespace.
 As many files are read as needed for the complete transaction.
@@ -893,8 +905,9 @@ As many files are written as needed to store the complete transaction.
 
 =item B<-use_mock_srv>
 
-Use the internal mock server for testing the client.
-This works at API level, bypassing HTTP transport.
+Test the client using the internal CMP server mock-up at API level,
+bypassing socket-based transfer via HTTP.
+This excludes I<-server>, I<-port>, and I<-rspin>.
 
 =back
 
@@ -904,7 +917,8 @@ This works at API level, bypassing HTTP transport.
 
 =item B<-port> I<number>
 
-Act as CMP HTTP server mock-up listening on the given port.
+Act as HTTP-based CMP server mock-up listening on the given port.
+This excludes I<-server>, I<-rspin>, and I<-use_mock_srv>.
 
 =item B<-max_msgs> I<number>
 
@@ -945,6 +959,10 @@ have no effect on the certificate verification enabled via this option.
 =item B<-srv_untrusted> I<filenames>|I<uris>
 
 Intermediate CA certs that may be useful when validating client certificates.
+
+=item B<-ref_cert> I<filename>|I<uri>
+
+Certificate to be expected for RR messages and any oldCertID in KUR messages.
 
 =item B<-rsp_cert> I<filename>|I<uri>
 

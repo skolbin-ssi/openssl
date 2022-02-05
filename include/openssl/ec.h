@@ -20,6 +20,8 @@
 # include <openssl/opensslconf.h>
 # include <openssl/types.h>
 
+# include <string.h>
+
 # ifdef  __cplusplus
 extern "C" {
 # endif
@@ -915,10 +917,10 @@ int i2d_ECPKParameters(const EC_GROUP *, unsigned char **out);
 #  define i2d_ECPKParameters_bio(bp,x) \
     ASN1_i2d_bio_of(EC_GROUP, i2d_ECPKParameters, bp, x)
 #  define d2i_ECPKParameters_fp(fp,x) \
-    (EC_GROUP *)ASN1_d2i_fp(NULL, (char *(*)())d2i_ECPKParameters, (fp), \
-                            (unsigned char **)(x))
+    (EC_GROUP *)ASN1_d2i_fp(NULL, (d2i_of_void *)d2i_ECPKParameters, (fp), \
+                            (void **)(x))
 #  define i2d_ECPKParameters_fp(fp,x) \
-    ASN1_i2d_fp(i2d_ECPKParameters,(fp), (unsigned char *)(x))
+    ASN1_i2d_fp((i2d_of_void *)i2d_ECPKParameters, (fp), (void *)(x))
 
 #  ifndef OPENSSL_NO_DEPRECATED_3_0
 OSSL_DEPRECATEDIN_3_0 int ECPKParameters_print(BIO *bp, const EC_GROUP *x,
@@ -1548,6 +1550,7 @@ OSSL_DEPRECATEDIN_3_0 void EC_KEY_METHOD_get_verify
 
 #  define EVP_EC_gen(curve) \
     EVP_PKEY_Q_keygen(NULL, NULL, "EC", (char *)(strstr(curve, "")))
+    /* strstr is used to enable type checking for the variadic string arg */
 #  define ECParameters_dup(x) ASN1_dup_of(EC_KEY, i2d_ECParameters, \
                                           d2i_ECParameters, x)
 
