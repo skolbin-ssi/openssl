@@ -36,6 +36,18 @@
  */
 #   define USE_SWAPCONTEXT
 #  endif
+#  if defined(__aarch64__) && defined(__clang__) \
+    && defined(__ARM_FEATURE_BTI_DEFAULT) && __ARM_FEATURE_BTI_DEFAULT == 1
+/*
+ * setjmp/longjmp don't currently work with BTI on all libc implementations
+ * when compiled by clang. This is because clang doesn't put a BTI after the
+ * call to setjmp where it returns the second time. This then fails on libc
+ * implementations - notably glibc - which use an indirect jump to there.
+ * So use the swapcontext implementation, which does work.
+ * See https://github.com/llvm/llvm-project/issues/48888.
+ */
+#   define USE_SWAPCONTEXT
+#  endif
 #  include <ucontext.h>
 #  ifndef USE_SWAPCONTEXT
 #   include <setjmp.h>
@@ -48,6 +60,9 @@ typedef struct async_fibre_st {
     int env_init;
 #  endif
 } async_fibre;
+
+int async_local_init(void);
+void async_local_deinit(void);
 
 static ossl_inline int async_fibre_swapcontext(async_fibre *o, async_fibre *n, int r)
 {

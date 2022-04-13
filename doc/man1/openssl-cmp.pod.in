@@ -252,8 +252,8 @@ e.g., C<1.2.3.4:int:56789>.
 The source of the private or public key for the certificate requested
 in Initialization Request (IR), Certification Request(CR), or
 Key Update Request (KUR).
-Default is the public key in the PKCS#10 CSR given with the B<-csr> option,
-if any, or else the current client key, if given.
+Defaults to the public key in the PKCS#10 CSR given with the B<-csr> option,
+the public key of the reference certificate, or the current client key.
 
 =item B<-newkeypass> I<arg>
 
@@ -273,7 +273,7 @@ or of the reference certificate (see B<-oldcert>) if provided.
 This default is used for IR and CR only if no SANs are set.
 If the NULL-DN (C<"/">) is given then no subject is placed in the template.
 
-If provided and neither B<-cert> nor B<-oldcert> is given,
+If provided and neither of B<-cert>, B<-oldcert>, or B<-csr> is given,
 the subject DN is used as fallback sender of outgoing CMP messages.
 
 The argument must be formatted as I</type0=value0/type1=value1/type2=...>.
@@ -360,6 +360,8 @@ When used with B<-cmd> I<ir>, I<cr>, or I<kur>, it is transformed into the
 respective regular CMP request.
 It may also be used with B<-cmd> I<rr> to specify the certificate to be revoked
 via the included subject name and public key.
+Its subject is used as fallback sender in CMP message headers
+if B<-cert> and B<-oldcert> are not given.
 
 =item B<-out_trusted> I<filenames>|I<uris>
 
@@ -1239,9 +1241,9 @@ The B<-engine option> was deprecated in OpenSSL 3.0.
 
 =head1 COPYRIGHT
 
-Copyright 2007-2021 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2007-2022 The OpenSSL Project Authors. All Rights Reserved.
 
-Licensed under the OpenSSL license (the "License").  You may not use
+Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy
 in the file LICENSE in the source distribution or at
 L<https://www.openssl.org/source/license.html>.

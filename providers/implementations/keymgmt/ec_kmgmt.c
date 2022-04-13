@@ -13,7 +13,7 @@
  */
 #include "internal/deprecated.h"
 
-#include "e_os.h" /* strcasecmp */
+#include "internal/e_os.h" /* strcasecmp */
 #include <string.h>
 #include <openssl/core_dispatch.h>
 #include <openssl/core_names.h>
@@ -469,9 +469,6 @@ int ec_export(void *keydata, int selection, OSSL_CALLBACK *param_cb,
         return 0;
     if ((selection & OSSL_KEYMGMT_SELECT_PRIVATE_KEY) != 0
             && (selection & OSSL_KEYMGMT_SELECT_PUBLIC_KEY) == 0)
-        return 0;
-    if ((selection & OSSL_KEYMGMT_SELECT_OTHER_PARAMETERS) != 0
-            && (selection & OSSL_KEYMGMT_SELECT_KEYPAIR) == 0)
         return 0;
 
     tmpl = OSSL_PARAM_BLD_new();

@@ -18,6 +18,7 @@
 #include "crypto/rand.h"
 #include "crypto/cryptlib.h"
 #include "rand_local.h"
+#include "crypto/context.h"
 
 #ifndef FIPS_MODULE
 # include <stdio.h>
@@ -28,7 +29,7 @@
 # include <openssl/engine.h>
 # include "crypto/rand_pool.h"
 # include "prov/seeding.h"
-# include "e_os.h"
+# include "internal/e_os.h"
 
 # ifndef OPENSSL_NO_ENGINE
 /* non-NULL if default_RAND_meth is ENGINE-provided */
@@ -434,7 +435,7 @@ typedef struct rand_global_st {
  * Initialize the OSSL_LIB_CTX global DRBGs on first use.
  * Returns the allocated global data on success or NULL on failure.
  */
-static void *rand_ossl_ctx_new(OSSL_LIB_CTX *libctx)
+void *ossl_rand_ctx_new(OSSL_LIB_CTX *libctx)
 {
     RAND_GLOBAL *dgbl = OPENSSL_zalloc(sizeof(*dgbl));
 
@@ -469,7 +470,7 @@ static void *rand_ossl_ctx_new(OSSL_LIB_CTX *libctx)
     return NULL;
 }
 
-static void rand_ossl_ctx_free(void *vdgbl)
+void ossl_rand_ctx_free(void *vdgbl)
 {
     RAND_GLOBAL *dgbl = vdgbl;
 
@@ -491,16 +492,9 @@ static void rand_ossl_ctx_free(void *vdgbl)
     OPENSSL_free(dgbl);
 }
 
-static const OSSL_LIB_CTX_METHOD rand_drbg_ossl_ctx_method = {
-    OSSL_LIB_CTX_METHOD_PRIORITY_2,
-    rand_ossl_ctx_new,
-    rand_ossl_ctx_free,
-};
-
 static RAND_GLOBAL *rand_get_global(OSSL_LIB_CTX *libctx)
 {
-    return ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_DRBG_INDEX,
-                                 &rand_drbg_ossl_ctx_method);
+    return ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_DRBG_INDEX);
 }
 
 static void rand_delete_thread_state(void *arg)
@@ -529,6 +523,8 @@ static EVP_RAND_CTX *rand_new_seed(OSSL_LIB_CTX *libctx)
     EVP_RAND_CTX *ctx;
     char *name;
 
+    if (dgbl == NULL)
+        return NULL;
     name = dgbl->seed_name != NULL ? dgbl->seed_name : "SEED-SRC";
     rand = EVP_RAND_fetch(libctx, name, dgbl->seed_propq);
     if (rand == NULL) {
@@ -561,6 +557,8 @@ static EVP_RAND_CTX *rand_new_drbg(OSSL_LIB_CTX *libctx, EVP_RAND_CTX *parent,
     const OSSL_PARAM *settables;
     char *name, *cipher;
 
+    if (dgbl == NULL)
+        return NULL;
     name = dgbl->rng_name != NULL ? dgbl->rng_name : "CTR-DRBG";
     rand = EVP_RAND_fetch(libctx, name, dgbl->rng_propq);
     if (rand == NULL) {
@@ -762,6 +760,9 @@ static int random_conf_init(CONF_IMODULE *md, const CONF *cnf)
         ERR_raise(ERR_LIB_CRYPTO, CRYPTO_R_RANDOM_SECTION_ERROR);
         return 0;
     }
+
+    if (dgbl == NULL)
+        return 0;
 
     for (i = 0; i < sk_CONF_VALUE_num(elist); i++) {
         cval = sk_CONF_VALUE_value(elist, i);

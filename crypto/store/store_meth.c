@@ -14,6 +14,7 @@
 #include "internal/property.h"
 #include "internal/provider.h"
 #include "store_local.h"
+#include "crypto/context.h"
 
 int OSSL_STORE_LOADER_up_ref(OSSL_STORE_LOADER *loader)
 {
@@ -68,25 +69,6 @@ static void free_loader(void *method)
     OSSL_STORE_LOADER_free(method);
 }
 
-/* Permanent loader method store, constructor and destructor */
-static void loader_store_free(void *vstore)
-{
-    ossl_method_store_free(vstore);
-}
-
-static void *loader_store_new(OSSL_LIB_CTX *ctx)
-{
-    return ossl_method_store_new(ctx);
-}
-
-
-static const OSSL_LIB_CTX_METHOD loader_store_method = {
-    /* We want loader_store to be cleaned up before the provider store */
-    OSSL_LIB_CTX_METHOD_PRIORITY_2,
-    loader_store_new,
-    loader_store_free,
-};
-
 /* Data to be passed through ossl_method_construct() */
 struct loader_data_st {
     OSSL_LIB_CTX *libctx;
@@ -123,8 +105,7 @@ static void *get_tmp_loader_store(void *data)
 /* Get the permanent loader store */
 static OSSL_METHOD_STORE *get_loader_store(OSSL_LIB_CTX *libctx)
 {
-    return ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_STORE_LOADER_STORE_INDEX,
-                                &loader_store_method);
+    return ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_STORE_LOADER_STORE_INDEX);
 }
 
 /* Get loader methods from a store, or put one in */
@@ -280,6 +261,7 @@ inner_loader_fetch(struct loader_data_st *methdata, int id,
 {
     OSSL_METHOD_STORE *store = get_loader_store(methdata->libctx);
     OSSL_NAMEMAP *namemap = ossl_namemap_stored(methdata->libctx);
+    const char *const propq = properties != NULL ? properties : "";
     void *method = NULL;
     int unsupported = 0;
 
@@ -309,7 +291,7 @@ inner_loader_fetch(struct loader_data_st *methdata, int id,
         unsupported = 1;
 
     if (id == 0
-        || !ossl_method_store_cache_get(store, NULL, id, properties, &method)) {
+        || !ossl_method_store_cache_get(store, NULL, id, propq, &method)) {
         OSSL_METHOD_CONSTRUCT_METHOD mcm = {
             get_tmp_loader_store,
             get_loader_from_store,
@@ -321,7 +303,7 @@ inner_loader_fetch(struct loader_data_st *methdata, int id,
 
         methdata->scheme_id = id;
         methdata->scheme = scheme;
-        methdata->propquery = properties;
+        methdata->propquery = propq;
         methdata->flag_construct_error_occurred = 0;
         if ((method = ossl_method_construct(methdata->libctx, OSSL_OP_STORE,
                                             &prov, 0 /* !force_cache */,
@@ -333,7 +315,7 @@ inner_loader_fetch(struct loader_data_st *methdata, int id,
              */
             if (id == 0)
                 id = ossl_namemap_name2num(namemap, scheme);
-            ossl_method_store_cache_set(store, prov, id, properties, method,
+            ossl_method_store_cache_set(store, prov, id, propq, method,
                                         up_ref_loader, free_loader);
         }
 

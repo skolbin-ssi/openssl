@@ -12,7 +12,7 @@
 #ifndef OSSL_SSL_LOCAL_H
 # define OSSL_SSL_LOCAL_H
 
-# include "e_os.h"              /* struct timeval for DTLS */
+# include "internal/e_os.h"              /* struct timeval for DTLS */
 # include <stdlib.h>
 # include <time.h>
 # include <errno.h>
@@ -811,6 +811,9 @@ int ssl_hmac_final(SSL_HMAC *ctx, unsigned char *md, size_t *len,
 size_t ssl_hmac_size(const SSL_HMAC *ctx);
 
 int ssl_get_EC_curve_nid(const EVP_PKEY *pkey);
+__owur int tls13_set_encoded_pub_key(EVP_PKEY *pkey,
+                                     const unsigned char *enckey,
+                                     size_t enckeylen);
 
 typedef struct tls_group_info_st {
     char *tlsname;           /* Curve Name as in TLS specs */
@@ -2430,6 +2433,7 @@ __owur int ssl_verify_cert_chain(SSL *s, STACK_OF(X509) *sk);
 __owur int ssl_build_cert_chain(SSL *s, SSL_CTX *ctx, int flags);
 __owur int ssl_cert_set_cert_store(CERT *c, X509_STORE *store, int chain,
                                    int ref);
+__owur int ssl_cert_get_cert_store(CERT *c, X509_STORE **pstore, int chain);
 
 __owur int ssl_security(const SSL *s, int op, int bits, int nid, void *other);
 __owur int ssl_ctx_security(const SSL_CTX *ctx, int op, int bits, int nid,
@@ -2761,9 +2765,9 @@ __owur int ssl_log_secret(SSL *ssl, const char *label,
 /* ktls.c */
 int ktls_check_supported_cipher(const SSL *s, const EVP_CIPHER *c,
                                 const EVP_CIPHER_CTX *dd);
-int ktls_configure_crypto(const SSL *s, const EVP_CIPHER *c, EVP_CIPHER_CTX *dd,
+int ktls_configure_crypto(SSL *s, const EVP_CIPHER *c, EVP_CIPHER_CTX *dd,
                           void *rl_sequence, ktls_crypto_info_t *crypto_info,
-                          unsigned char **rec_seq, unsigned char *iv,
+                          int is_tx, unsigned char *iv,
                           unsigned char *key, unsigned char *mac_key,
                           size_t mac_secret_size);
 #  endif

@@ -23,24 +23,6 @@
 
 #define NAME_SEPARATOR ':'
 
-static void evp_method_store_free(void *vstore)
-{
-    ossl_method_store_free(vstore);
-}
-
-static void *evp_method_store_new(OSSL_LIB_CTX *ctx)
-{
-    return ossl_method_store_new(ctx);
-}
-
-
-static const OSSL_LIB_CTX_METHOD evp_method_store_method = {
-    /* We want evp_method_store to be cleaned up before the provider store */
-    OSSL_LIB_CTX_METHOD_PRIORITY_2,
-    evp_method_store_new,
-    evp_method_store_free,
-};
-
 /* Data to be passed through ossl_method_construct() */
 struct evp_method_data_st {
     OSSL_LIB_CTX *libctx;
@@ -79,8 +61,7 @@ static void *get_tmp_evp_method_store(void *data)
 
 static OSSL_METHOD_STORE *get_evp_method_store(OSSL_LIB_CTX *libctx)
 {
-    return ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_EVP_METHOD_STORE_INDEX,
-                                 &evp_method_store_method);
+    return ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_EVP_METHOD_STORE_INDEX);
 }
 
 /*
@@ -247,6 +228,7 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
 {
     OSSL_METHOD_STORE *store = get_evp_method_store(methdata->libctx);
     OSSL_NAMEMAP *namemap = ossl_namemap_stored(methdata->libctx);
+    const char *const propq = properties != NULL ? properties : "";
     uint32_t meth_id = 0;
     void *method = NULL;
     int unsupported = 0;
@@ -299,8 +281,7 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
         unsupported = 1;
 
     if (meth_id == 0
-        || !ossl_method_store_cache_get(store, prov, meth_id, properties,
-                                        &method)) {
+        || !ossl_method_store_cache_get(store, prov, meth_id, propq, &method)) {
         OSSL_METHOD_CONSTRUCT_METHOD mcm = {
             get_tmp_evp_method_store,
             get_evp_method_from_store,
@@ -312,7 +293,7 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
         methdata->operation_id = operation_id;
         methdata->name_id = name_id;
         methdata->names = name;
-        methdata->propquery = properties;
+        methdata->propquery = propq;
         methdata->method_from_algorithm = new_method;
         methdata->refcnt_up_method = up_ref_method;
         methdata->destruct_method = free_method;
@@ -330,7 +311,7 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
                 name_id = ossl_namemap_name2num(namemap, name);
             meth_id = evp_method_id(name_id, operation_id);
             if (name_id != 0)
-                ossl_method_store_cache_set(store, prov, meth_id, properties,
+                ossl_method_store_cache_set(store, prov, meth_id, propq,
                                             method, up_ref_method, free_method);
         }
 
@@ -349,7 +330,7 @@ inner_evp_generic_fetch(struct evp_method_data_st *methdata,
         ERR_raise_data(ERR_LIB_EVP, code,
                        "%s, Algorithm (%s : %d), Properties (%s)",
                        ossl_lib_ctx_get_descriptor(methdata->libctx),
-                       name = NULL ? "<null>" : name, name_id,
+                       name == NULL ? "<null>" : name, name_id,
                        properties == NULL ? "<null>" : properties);
     }
 

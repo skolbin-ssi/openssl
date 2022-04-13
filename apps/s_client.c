@@ -8,7 +8,7 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "e_os.h"
+#include "internal/e_os.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -434,7 +434,7 @@ typedef enum OPTION_choice {
     OPT_XMPPHOST, OPT_VERIFY, OPT_NAMEOPT,
     OPT_CERT, OPT_CRL, OPT_CRL_DOWNLOAD, OPT_SESS_OUT, OPT_SESS_IN,
     OPT_CERTFORM, OPT_CRLFORM, OPT_VERIFY_RET_ERROR, OPT_VERIFY_QUIET,
-    OPT_BRIEF, OPT_PREXIT, OPT_CRLF, OPT_QUIET, OPT_NBIO,
+    OPT_BRIEF, OPT_PREXIT, OPT_NO_INTERACTIVE, OPT_CRLF, OPT_QUIET, OPT_NBIO,
     OPT_SSL_CLIENT_ENGINE, OPT_IGN_EOF, OPT_NO_IGN_EOF,
     OPT_DEBUG, OPT_TLSEXTDEBUG, OPT_STATUS, OPT_WDEBUG,
     OPT_MSG, OPT_MSGFILE, OPT_ENGINE, OPT_TRACE, OPT_SECURITY_DEBUG,
@@ -456,6 +456,7 @@ typedef enum OPTION_choice {
     OPT_USE_SRTP, OPT_KEYMATEXPORT, OPT_KEYMATEXPORTLEN, OPT_PROTOHOST,
     OPT_MAXFRAGLEN, OPT_MAX_SEND_FRAG, OPT_SPLIT_SEND_FRAG, OPT_MAX_PIPELINES,
     OPT_READ_BUF, OPT_KEYLOG_FILE, OPT_EARLY_DATA, OPT_REQCAFILE,
+    OPT_TFO,
     OPT_V_ENUM,
     OPT_X_ENUM,
     OPT_S_ENUM, OPT_IGNORE_UNEXPECTED_EOF,
@@ -539,6 +540,9 @@ const OPTIONS s_client_options[] = {
      "Do not load certificates from the default certificates store"},
     {"requestCAfile", OPT_REQCAFILE, '<',
       "PEM format file of CA names to send to the server"},
+#if defined(TCP_FASTOPEN) && !defined(OPENSSL_NO_TFO)
+    {"tfo", OPT_TFO, '-', "Connect using TCP Fast Open"},
+#endif
     {"dane_tlsa_domain", OPT_DANE_TLSA_DOMAIN, 's', "DANE TLSA base domain"},
     {"dane_tlsa_rrdata", OPT_DANE_TLSA_RRDATA, 's',
      "DANE TLSA rrdata presentation form"},
@@ -569,6 +573,8 @@ const OPTIONS s_client_options[] = {
      "Restrict output to brief summary of connection parameters"},
     {"prexit", OPT_PREXIT, '-',
      "Print session information when the program exits"},
+    {"no-interactive", OPT_NO_INTERACTIVE, '-',
+     "Don't run the client in the interactive mode"},
 
     OPT_SECTION("Debug"),
     {"showcerts", OPT_SHOWCERTS, '-',
@@ -809,7 +815,7 @@ int s_client_main(int argc, char **argv)
     char *cert_file = NULL, *key_file = NULL, *chain_file = NULL;
     char *chCApath = NULL, *chCAfile = NULL, *chCAstore = NULL, *host = NULL;
     char *thost = NULL, *tport = NULL;
-    char *port = OPENSSL_strdup(PORT);
+    char *port = NULL;
     char *bindhost = NULL, *bindport = NULL;
     char *passarg = NULL, *pass = NULL;
     char *vfyCApath = NULL, *vfyCAfile = NULL, *vfyCAstore = NULL;
@@ -822,6 +828,7 @@ int s_client_main(int argc, char **argv)
     int build_chain = 0, cbuf_len, cbuf_off, cert_format = FORMAT_UNDEF;
     int key_format = FORMAT_UNDEF, crlf = 0, full_log = 1, mbuf_len = 0;
     int prexit = 0;
+    int nointeractive = 0;
     int sdebug = 0;
     int reconnect = 0, verify = SSL_VERIFY_NONE, vpmtouched = 0;
     int ret = 1, in_init = 1, i, nbio_test = 0, sock = -1, k, width, state = 0;
@@ -896,6 +903,8 @@ int s_client_main(int argc, char **argv)
 #ifndef OPENSSL_NO_KTLS
     int enable_ktls = 0;
 #endif
+    int tfo = 0;
+    BIO_ADDR *tfo_addr = NULL;
 
     FD_ZERO(&readfds);
     FD_ZERO(&writefds);
@@ -911,10 +920,11 @@ int s_client_main(int argc, char **argv)
     c_debug = 0;
     c_showcerts = 0;
     c_nbio = 0;
+    port = OPENSSL_strdup(PORT);
     vpm = X509_VERIFY_PARAM_new();
     cctx = SSL_CONF_CTX_new();
 
-    if (vpm == NULL || cctx == NULL) {
+    if (port == NULL || vpm == NULL || cctx == NULL) {
         BIO_printf(bio_err, "%s: out of memory\n", opt_getprog());
         goto end;
     }
@@ -1080,6 +1090,9 @@ int s_client_main(int argc, char **argv)
         case OPT_PREXIT:
             prexit = 1;
             break;
+        case OPT_NO_INTERACTIVE:
+            nointeractive = 1;
+            break;
         case OPT_CRLF:
             crlf = 1;
             break;
@@ -1139,6 +1152,10 @@ int s_client_main(int argc, char **argv)
             break;
         case OPT_MSGFILE:
             bio_c_msg = BIO_new_file(opt_arg(), "w");
+            if (bio_c_msg == NULL) {
+                BIO_printf(bio_err, "Error writing file %s\n", opt_arg());
+                goto end;
+            }
             break;
         case OPT_TRACE:
 #ifndef OPENSSL_NO_SSL_TRACE
@@ -1401,6 +1418,9 @@ int s_client_main(int argc, char **argv)
         case OPT_STARTTLS:
             if (!opt_pair(opt_arg(), services, &starttls_proto))
                 goto end;
+            break;
+        case OPT_TFO:
+            tfo = 1;
             break;
         case OPT_SERVERNAME:
             servername = opt_arg();
@@ -1671,10 +1691,21 @@ int s_client_main(int argc, char **argv)
     if (bio_c_out == NULL) {
         if (c_quiet && !c_debug) {
             bio_c_out = BIO_new(BIO_s_null());
-            if (c_msg && bio_c_msg == NULL)
+            if (c_msg && bio_c_msg == NULL) {
                 bio_c_msg = dup_bio_out(FORMAT_TEXT);
-        } else if (bio_c_out == NULL)
+                if (bio_c_msg == NULL) {
+                    BIO_printf(bio_err, "Out of memory\n");
+                    goto end;
+                }
+            }
+        } else {
             bio_c_out = dup_bio_out(FORMAT_TEXT);
+        }
+
+        if (bio_c_out == NULL) {
+            BIO_printf(bio_err, "Unable to create BIO\n");
+            goto end;
+        }
     }
 #ifndef OPENSSL_NO_SRP
     if (!app_passwd(srppass, NULL, &srp_arg.srppassin, NULL)) {
@@ -2013,10 +2044,18 @@ int s_client_main(int argc, char **argv)
                    "-dane_tlsa_domain option.\n", prog);
         goto end;
     }
+#ifndef OPENSSL_NO_DTLS
+    if (isdtls && tfo) {
+        BIO_printf(bio_err, "%s: DTLS does not support the -tfo option\n", prog);
+        goto end;
+    }
+#endif
 
+    if (tfo)
+        BIO_printf(bio_c_out, "Connecting via TFO\n");
  re_start:
     if (init_client(&sock, host, port, bindhost, bindport, socket_family,
-                    socket_type, protocol) == 0) {
+                    socket_type, protocol, tfo, &tfo_addr) == 0) {
         BIO_printf(bio_err, "connect:errno=%d\n", get_last_socket_error());
         BIO_closesocket(sock);
         goto end;
@@ -2041,14 +2080,16 @@ int s_client_main(int argc, char **argv)
 #endif
             sbio = BIO_new_dgram(sock, BIO_NOCLOSE);
 
-        if ((peer_info.addr = BIO_ADDR_new()) == NULL) {
+        if (sbio == NULL || (peer_info.addr = BIO_ADDR_new()) == NULL) {
             BIO_printf(bio_err, "memory allocation failure\n");
+            BIO_free(sbio);
             BIO_closesocket(sock);
             goto end;
         }
         if (!BIO_sock_info(sock, BIO_SOCK_INFO_ADDRESS, &peer_info)) {
             BIO_printf(bio_err, "getsockname:errno=%d\n",
                        get_last_socket_error());
+            BIO_free(sbio);
             BIO_ADDR_free(peer_info.addr);
             BIO_closesocket(sock);
             goto end;
@@ -2089,10 +2130,28 @@ int s_client_main(int argc, char **argv)
 #endif /* OPENSSL_NO_DTLS */
         sbio = BIO_new_socket(sock, BIO_NOCLOSE);
 
+    if (sbio == NULL) {
+        BIO_printf(bio_err, "Unable to create BIO\n");
+        ERR_print_errors(bio_err);
+        BIO_closesocket(sock);
+        goto end;
+    }
+
+    /* Now that we're using a BIO... */
+    if (tfo_addr != NULL)
+        (void)BIO_set_conn_address(sbio, tfo_addr);
+    if (tfo)
+        (void)BIO_set_tfo(sbio, 1);
+
     if (nbio_test) {
         BIO *test;
 
         test = BIO_new(BIO_f_nbio_test());
+        if (test == NULL) {
+            BIO_printf(bio_err, "Unable to create BIO\n");
+            BIO_free(sbio);
+            goto shut;
+        }
         sbio = BIO_push(test, sbio);
     }
 
@@ -2159,6 +2218,10 @@ int s_client_main(int argc, char **argv)
             int foundit = 0;
             BIO *fbio = BIO_new(BIO_f_buffer());
 
+            if (fbio == NULL) {
+                BIO_printf(bio_err, "Unable to create BIO\n");
+                goto shut;
+            }
             BIO_push(fbio, sbio);
             /* Wait for multi-line response to end from LMTP or SMTP */
             do {
@@ -2207,6 +2270,10 @@ int s_client_main(int argc, char **argv)
             int foundit = 0;
             BIO *fbio = BIO_new(BIO_f_buffer());
 
+            if (fbio == NULL) {
+                BIO_printf(bio_err, "Unable to create BIO\n");
+                goto shut;
+            }
             BIO_push(fbio, sbio);
             BIO_gets(fbio, mbuf, BUFSIZZ);
             /* STARTTLS command requires CAPABILITY... */
@@ -2234,6 +2301,10 @@ int s_client_main(int argc, char **argv)
         {
             BIO *fbio = BIO_new(BIO_f_buffer());
 
+            if (fbio == NULL) {
+                BIO_printf(bio_err, "Unable to create BIO\n");
+                goto shut;
+            }
             BIO_push(fbio, sbio);
             /* wait for multi-line response to end from FTP */
             do {
@@ -2328,6 +2399,10 @@ int s_client_main(int argc, char **argv)
             int numeric;
             BIO *fbio = BIO_new(BIO_f_buffer());
 
+            if (fbio == NULL) {
+                BIO_printf(bio_err, "Unable to create BIO\n");
+                goto end;
+            }
             BIO_push(fbio, sbio);
             BIO_printf(fbio, "STARTTLS\r\n");
             (void)BIO_flush(fbio);
@@ -2488,6 +2563,10 @@ int s_client_main(int argc, char **argv)
             int foundit = 0;
             BIO *fbio = BIO_new(BIO_f_buffer());
 
+            if (fbio == NULL) {
+                BIO_printf(bio_err, "Unable to create BIO\n");
+                goto end;
+            }
             BIO_push(fbio, sbio);
             BIO_gets(fbio, mbuf, BUFSIZZ);
             /* STARTTLS command requires CAPABILITIES... */
@@ -2528,6 +2607,10 @@ int s_client_main(int argc, char **argv)
             int foundit = 0;
             BIO *fbio = BIO_new(BIO_f_buffer());
 
+            if (fbio == NULL) {
+                BIO_printf(bio_err, "Unable to create BIO\n");
+                goto end;
+            }
             BIO_push(fbio, sbio);
             /* wait for multi-line response to end from Sieve */
             do {
@@ -2587,8 +2670,9 @@ int s_client_main(int argc, char **argv)
             BIO *ldapbio = BIO_new(BIO_s_mem());
             CONF *cnf = NCONF_new(NULL);
 
-            if (cnf == NULL) {
+            if (ldapbio == NULL || cnf == NULL) {
                 BIO_free(ldapbio);
+                NCONF_free(cnf);
                 goto end;
             }
             BIO_puts(ldapbio, ldap_tls_genconf);
@@ -2848,9 +2932,12 @@ int s_client_main(int argc, char **argv)
 
             case SSL_ERROR_SYSCALL:
                 if ((k != 0) || (cbuf_len != 0)) {
-                    BIO_printf(bio_err, "write:errno=%d\n",
-                               get_last_socket_error());
-                    goto shut;
+                    int sockerr = get_last_socket_error();
+
+                    if (!tfo || sockerr != EISCONN) {
+                        BIO_printf(bio_err, "write:errno=%d\n", sockerr);
+                        goto shut;
+                    }
                 } else {
                     read_tty = 1;
                     write_ssl = 0;
@@ -2950,6 +3037,13 @@ int s_client_main(int argc, char **argv)
                 goto shut;
             }
         }
+
+        /* don't wait for client input in the non-interactive mode */
+        else if (nointeractive) {
+            ret = 0;
+            goto shut;
+        }
+
 /* OPENSSL_SYS_MSDOS includes OPENSSL_SYS_WINDOWS */
 #if defined(OPENSSL_SYS_MSDOS)
         else if (has_stdin_waiting())
@@ -3063,6 +3157,7 @@ int s_client_main(int argc, char **argv)
     OPENSSL_free(srp_arg.srppassin);
 #endif
     OPENSSL_free(sname_alloc);
+    BIO_ADDR_free(tfo_addr);
     OPENSSL_free(connectstr);
     OPENSSL_free(bindstr);
     OPENSSL_free(bindhost);

@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -285,7 +285,7 @@ static char *app_get_pass(const char *arg, int keepbio)
             i = atoi(arg);
             if (i >= 0)
                 pwdbio = BIO_new_fd(i, BIO_NOCLOSE);
-            if ((i < 0) || !pwdbio) {
+            if ((i < 0) || pwdbio == NULL) {
                 BIO_printf(bio_err, "Can't access file descriptor %s\n", arg);
                 return NULL;
             }
@@ -293,6 +293,12 @@ static char *app_get_pass(const char *arg, int keepbio)
              * Can't do BIO_gets on an fd BIO so add a buffering BIO
              */
             btmp = BIO_new(BIO_f_buffer());
+            if (btmp == NULL) {
+                BIO_free_all(pwdbio);
+                pwdbio = NULL;
+                BIO_printf(bio_err, "Out of memory\n");
+                return NULL;
+            }
             pwdbio = BIO_push(btmp, pwdbio);
 #endif
         } else if (strcmp(arg, "stdin") == 0) {
@@ -3245,18 +3251,6 @@ void make_uppercase(char *string)
 
     for (i = 0; string[i] != '\0'; i++)
         string[i] = toupper((unsigned char)string[i]);
-}
-
-/* This function is defined here due to visibility of bio_err */
-int opt_printf_stderr(const char *fmt, ...)
-{
-    va_list ap;
-    int ret;
-
-    va_start(ap, fmt);
-    ret = BIO_vprintf(bio_err, fmt, ap);
-    va_end(ap);
-    return ret;
 }
 
 OSSL_PARAM *app_params_new_from_opts(STACK_OF(OPENSSL_STRING) *opts,

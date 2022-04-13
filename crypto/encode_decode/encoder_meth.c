@@ -17,6 +17,7 @@
 #include "internal/provider.h"
 #include "crypto/encoder.h"
 #include "encoder_local.h"
+#include "crypto/context.h"
 
 /*
  * Encoder can have multiple names, separated with colons in a name string
@@ -65,25 +66,6 @@ void OSSL_ENCODER_free(OSSL_ENCODER *encoder)
     OPENSSL_free(encoder);
 }
 
-/* Permanent encoder method store, constructor and destructor */
-static void encoder_store_free(void *vstore)
-{
-    ossl_method_store_free(vstore);
-}
-
-static void *encoder_store_new(OSSL_LIB_CTX *ctx)
-{
-    return ossl_method_store_new(ctx);
-}
-
-
-static const OSSL_LIB_CTX_METHOD encoder_store_method = {
-    /* We want encoder_store to be cleaned up before the provider store */
-    OSSL_LIB_CTX_METHOD_PRIORITY_2,
-    encoder_store_new,
-    encoder_store_free,
-};
-
 /* Data to be passed through ossl_method_construct() */
 struct encoder_data_st {
     OSSL_LIB_CTX *libctx;
@@ -120,8 +102,7 @@ static void dealloc_tmp_encoder_store(void *store)
 /* Get the permanent encoder store */
 static OSSL_METHOD_STORE *get_encoder_store(OSSL_LIB_CTX *libctx)
 {
-    return ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_ENCODER_STORE_INDEX,
-                                 &encoder_store_method);
+    return ossl_lib_ctx_get_data(libctx, OSSL_LIB_CTX_ENCODER_STORE_INDEX);
 }
 
 /* Get encoder methods from a store, or put one in */
@@ -349,6 +330,7 @@ inner_ossl_encoder_fetch(struct encoder_data_st *methdata, int id,
 {
     OSSL_METHOD_STORE *store = get_encoder_store(methdata->libctx);
     OSSL_NAMEMAP *namemap = ossl_namemap_stored(methdata->libctx);
+    const char *const propq = properties != NULL ? properties : "";
     void *method = NULL;
     int unsupported = 0;
 
@@ -377,7 +359,7 @@ inner_ossl_encoder_fetch(struct encoder_data_st *methdata, int id,
         unsupported = 1;
 
     if (id == 0
-        || !ossl_method_store_cache_get(store, NULL, id, properties, &method)) {
+        || !ossl_method_store_cache_get(store, NULL, id, propq, &method)) {
         OSSL_METHOD_CONSTRUCT_METHOD mcm = {
             get_tmp_encoder_store,
             get_encoder_from_store,
@@ -389,7 +371,7 @@ inner_ossl_encoder_fetch(struct encoder_data_st *methdata, int id,
 
         methdata->id = id;
         methdata->names = name;
-        methdata->propquery = properties;
+        methdata->propquery = propq;
         methdata->flag_construct_error_occurred = 0;
         if ((method = ossl_method_construct(methdata->libctx, OSSL_OP_ENCODER,
                                             &prov, 0 /* !force_cache */,
@@ -402,7 +384,7 @@ inner_ossl_encoder_fetch(struct encoder_data_st *methdata, int id,
              */
             if (id == 0)
                 id = ossl_namemap_name2num(namemap, name);
-            ossl_method_store_cache_set(store, prov, id, properties, method,
+            ossl_method_store_cache_set(store, prov, id, propq, method,
                                         up_ref_encoder, free_encoder);
         }
 
