@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -14,7 +14,7 @@
 /* We need to use some engine deprecated APIs */
 #define OPENSSL_SUPPRESS_DEPRECATED
 
-#include "internal/e_os.h" /* for stat and strncasecmp */
+#include "internal/e_os.h" /* for stat */
 #include <string.h>
 #include <sys/stat.h>
 #include <ctype.h>
@@ -70,8 +70,8 @@ static char *file_get_pass(const UI_METHOD *ui_method, char *pass,
     if ((prompt = UI_construct_prompt(ui, desc, info)) == NULL) {
         ATTICerr(0, ERR_R_MALLOC_FAILURE);
         pass = NULL;
-    } else if (!UI_add_input_string(ui, prompt, UI_INPUT_FLAG_DEFAULT_PWD,
-                                    pass, 0, maxsize - 1)) {
+    } else if (UI_add_input_string(ui, prompt, UI_INPUT_FLAG_DEFAULT_PWD,
+                                    pass, 0, maxsize - 1) <= 0) {
         ATTICerr(0, ERR_R_UI_LIB);
         pass = NULL;
     } else {
@@ -1459,7 +1459,8 @@ static int file_name_check(OSSL_STORE_LOADER_CTX *ctx, const char *name)
     /*
      * First, check the basename
      */
-    if (strncasecmp(name, ctx->_.dir.search_name, len) != 0 || name[len] != '.')
+    if (OPENSSL_strncasecmp(name, ctx->_.dir.search_name, len) != 0
+        || name[len] != '.')
         return 0;
     p = &name[len + 1];
 

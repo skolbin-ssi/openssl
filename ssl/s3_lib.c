@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -4720,7 +4720,7 @@ EVP_PKEY *ssl_generate_pkey_group(SSL *s, uint16_t id)
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_EVP_LIB);
         goto err;
     }
-    if (!EVP_PKEY_CTX_set_group_name(pctx, ginf->realname)) {
+    if (EVP_PKEY_CTX_set_group_name(pctx, ginf->realname) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_EVP_LIB);
         goto err;
     }
@@ -4754,7 +4754,7 @@ EVP_PKEY *ssl_generate_param_group(SSL *s, uint16_t id)
         goto err;
     if (EVP_PKEY_paramgen_init(pctx) <= 0)
         goto err;
-    if (!EVP_PKEY_CTX_set_group_name(pctx, ginf->realname)) {
+    if (EVP_PKEY_CTX_set_group_name(pctx, ginf->realname) <= 0) {
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_EVP_LIB);
         goto err;
     }

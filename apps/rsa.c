@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -302,7 +302,7 @@ int rsa_main(int argc, char **argv)
         } else if (r == 0) {
             BIO_printf(bio_err, "RSA key not ok\n");
             ERR_print_errors(bio_err);
-        } else if (r == -1) {
+        } else if (r < 0) {
             ERR_print_errors(bio_err);
             goto end;
         }

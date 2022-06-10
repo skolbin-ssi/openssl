@@ -710,8 +710,8 @@ see L<openssl-env(7)>.
 
 Enable tracing output of OpenSSL library, by name.
 This output will only make sense if you know OpenSSL internals well.
-Also, it might not give you any output at all, depending on how
-OpenSSL was built.
+Also, it might not give you any output at all
+if OpenSSL was built without tracing support.
 
 The value is a comma separated list of names, with the following
 available:
@@ -765,6 +765,10 @@ policy evaluation.
 =item B<BN_CTX>
 
 BIGNUM context.
+
+=item B<HTTP>
+
+HTTP client diagnostics
 
 =back
 
@@ -845,7 +849,7 @@ that program with no arguments is now equivalent to C<openssl help>.
 
 =head1 COPYRIGHT
 
-Copyright 2000-2021 The OpenSSL Project Authors. All Rights Reserved.
+Copyright 2000-2022 The OpenSSL Project Authors. All Rights Reserved.
 
 Licensed under the Apache License 2.0 (the "License").  You may not use
 this file except in compliance with the License.  You can obtain a copy

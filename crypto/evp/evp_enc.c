@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -202,6 +202,8 @@ static int evp_cipher_init_internal(EVP_CIPHER_CTX *ctx,
             return 0;
         }
         EVP_CIPHER_free(ctx->fetched_cipher);
+        /* Coverity false positive, the reference counting is confusing it */
+        /* coverity[use_after_free] */
         ctx->fetched_cipher = (EVP_CIPHER *)cipher;
     }
     ctx->cipher = cipher;
@@ -317,7 +319,7 @@ static int evp_cipher_init_internal(EVP_CIPHER_CTX *ctx,
         /* Preserve wrap enable flag, zero everything else */
         ctx->flags &= EVP_CIPHER_CTX_FLAG_WRAP_ALLOW;
         if (ctx->cipher->flags & EVP_CIPH_CTRL_INIT) {
-            if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_INIT, 0, NULL)) {
+            if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_INIT, 0, NULL) <= 0) {
                 ctx->cipher = NULL;
                 ERR_raise(ERR_LIB_EVP, EVP_R_INITIALIZATION_ERROR);
                 return 0;

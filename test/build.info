@@ -37,7 +37,7 @@ IF[{- !$disabled{tests} -}]
           sanitytest rsa_complex exdatatest bntest \
           ecstresstest gmdifftest pbelutest \
           destest mdc2test sha_test \
-          exptest pbetest \
+          exptest pbetest localetest evp_pkey_ctx_new_from_name\
           evp_pkey_provided_test evp_test evp_extra_test evp_extra_test2 \
           evp_fetch_prov_test evp_libctx_test ossl_store_test \
           v3nametest v3ext \
@@ -58,7 +58,7 @@ IF[{- !$disabled{tests} -}]
           recordlentest drbgtest rand_status_test sslbuffertest \
           time_offset_test pemtest ssl_cert_table_internal_test ciphername_test \
           http_test servername_test ocspapitest fatalerrtest tls13ccstest \
-          sysdefaulttest errtest ssl_ctx_test \
+          sysdefaulttest errtest ssl_ctx_test build_wincrypt_test \
           context_internal_test aesgcmtest params_test evp_pkey_dparams_test \
           keymgmt_internal_test hexstr_test provider_status_test defltfips_test \
           bio_readbuffer_test user_property_test pkcs7_test upcallstest \
@@ -135,6 +135,14 @@ IF[{- !$disabled{tests} -}]
   SOURCE[exptest]=exptest.c
   INCLUDE[exptest]=../include ../apps/include
   DEPEND[exptest]=../libcrypto libtestutil.a
+
+  SOURCE[localetest]=localetest.c
+  INCLUDE[localetest]=../include ../apps/include
+  DEPEND[localetest]=../libcrypto libtestutil.a
+
+  SOURCE[evp_pkey_ctx_new_from_name]=evp_pkey_ctx_new_from_name.c
+  INCLUDE[evp_pkey_ctx_new_from_name]=../include ../apps/include
+  DEPEND[evp_pkey_ctx_new_from_name]=../libcrypto
 
   SOURCE[pbetest]=pbetest.c
   INCLUDE[pbetest]=../include ../apps/include
@@ -262,7 +270,7 @@ IF[{- !$disabled{tests} -}]
   INCLUDE[bad_dtls_test]=../include ../apps/include
   DEPEND[bad_dtls_test]=../libcrypto ../libssl libtestutil.a
 
-  SOURCE[packettest]=packettest.c
+  SOURCE[packettest]=packettest.c ../crypto/quic_vlint.c
   INCLUDE[packettest]=../include ../apps/include
   DEPEND[packettest]=../libcrypto libtestutil.a
 
@@ -808,7 +816,7 @@ IF[{- !$disabled{tests} -}]
     PROGRAMS{noinst}=tls13secretstest
     SOURCE[tls13secretstest]=tls13secretstest.c
     DEFINE[tls13secretstest]=OPENSSL_NO_KTLS
-    SOURCE[tls13secretstest]= ../ssl/tls13_enc.c ../crypto/packet.c
+    SOURCE[tls13secretstest]= ../ssl/tls13_enc.c ../crypto/packet.c ../crypto/quic_vlint.c
     INCLUDE[tls13secretstest]=.. ../include ../apps/include
     DEPEND[tls13secretstest]=../libcrypto ../libssl libtestutil.a
   ENDIF
@@ -921,6 +929,18 @@ ENDIF
   SOURCE[ssl_ctx_test]=ssl_ctx_test.c
   INCLUDE[ssl_ctx_test]=../include ../apps/include
   DEPEND[ssl_ctx_test]=../libcrypto ../libssl libtestutil.a
+
+  SOURCE[build_wincrypt_test]=build_wincrypt_test.c
+  INCLUDE[build_wincrypt_test]=../include
+  DEPEND[build_wincrypt_test]=../libssl ../libcrypto
+
+  IF[{- !$disabled{'quic'} -}]
+    PROGRAMS{noinst}=quicapitest
+  ENDIF
+
+  SOURCE[quicapitest]=quicapitest.c helpers/ssltestlib.c
+  INCLUDE[quicapitest]=../include ../apps/include
+  DEPEND[quicapitest]=../libcrypto ../libssl libtestutil.a
 
 {-
    use File::Spec::Functions;

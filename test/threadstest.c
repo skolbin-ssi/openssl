@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -654,6 +654,19 @@ static int test_obj_add(void)
                            1, default_provider);
 }
 
+static void test_lib_ctx_load_config_worker(void)
+{
+    if (!TEST_int_eq(OSSL_LIB_CTX_load_config(multi_libctx, config_file), 1))
+        multi_success = 0;
+}
+
+static int test_lib_ctx_load_config(void)
+{
+    return thread_run_test(&test_lib_ctx_load_config_worker,
+                           MAXIMUM_THREADS, &test_lib_ctx_load_config_worker,
+                           1, default_provider);
+}
+
 typedef enum OPTION_choice {
     OPT_ERR = -1,
     OPT_EOF = 0,
@@ -722,6 +735,7 @@ int setup_tests(void)
 #endif
     ADD_TEST(test_multi_load_unload_provider);
     ADD_TEST(test_obj_add);
+    ADD_TEST(test_lib_ctx_load_config);
     return 1;
 }
 

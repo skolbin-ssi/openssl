@@ -734,10 +734,10 @@ static int aes_ccm_enc_dec(const char *alg,
     if (!TEST_ptr(ctx = EVP_CIPHER_CTX_new())
         || !TEST_ptr(cipher = EVP_CIPHER_fetch(libctx, alg, ""))
         || !TEST_true(EVP_CipherInit_ex(ctx, cipher, NULL, NULL, NULL, enc))
-        || !TEST_true(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, iv_len,
-                                          NULL))
-        || !TEST_true(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, tag_len,
-                                          enc ? NULL : (void *)tag))
+        || !TEST_int_gt(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, iv_len,
+                                          NULL), 0)
+        || !TEST_int_gt(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, tag_len,
+                                          enc ? NULL : (void *)tag), 0)
         || !TEST_true(EVP_CipherInit_ex(ctx, NULL, NULL, key, iv, enc))
         || !TEST_true(EVP_CIPHER_CTX_set_padding(ctx, 0))
         || !TEST_true(EVP_CipherUpdate(ctx, NULL, &len, NULL, pt_len))
@@ -753,8 +753,8 @@ static int aes_ccm_enc_dec(const char *alg,
         goto err;
     if (enc) {
         out_len += len;
-        if (!TEST_true(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG,
-                                           tag_len, out + out_len))
+        if (!TEST_int_gt(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG,
+                                           tag_len, out + out_len), 0)
             || !TEST_mem_eq(out, out_len, ct, ct_len)
             || !TEST_mem_eq(out + out_len, tag_len, tag, tag_len))
             goto err;
@@ -821,13 +821,13 @@ static int aes_gcm_enc_dec(const char *alg,
     if (!TEST_ptr(ctx = EVP_CIPHER_CTX_new())
         || !TEST_ptr(cipher = EVP_CIPHER_fetch(libctx, alg, ""))
         || !TEST_true(EVP_CipherInit_ex(ctx, cipher, NULL, NULL, NULL, enc))
-        || !TEST_true(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, iv_len,
-                                          NULL)))
+        || !TEST_int_gt(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, iv_len,
+                                          NULL), 0))
         goto err;
 
     if (!enc) {
-        if (!TEST_true(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, tag_len,
-                                           (void *)tag)))
+        if (!TEST_int_gt(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, tag_len,
+                                           (void *)tag), 0))
             goto err;
     }
     /*
@@ -850,8 +850,8 @@ static int aes_gcm_enc_dec(const char *alg,
     out_len += len;
     if (enc) {
         if (!TEST_mem_eq(out, out_len, ct, ct_len)
-            || !TEST_true(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG,
-                                              tag_len, out + out_len))
+            || !TEST_int_gt(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG,
+                                              tag_len, out + out_len), 0)
             || !TEST_mem_eq(out + out_len, tag_len, tag, tag_len))
                     goto err;
     } else {
@@ -1091,9 +1091,9 @@ static int rsa_keygen_test(int id)
     if (!TEST_ptr(ctx = EVP_PKEY_CTX_new_from_name(libctx, "RSA", NULL))
         || !TEST_ptr(e_bn = BN_bin2bn(tst->e, tst->e_len, NULL))
         || !TEST_int_gt(EVP_PKEY_keygen_init(ctx), 0)
-        || !TEST_true(EVP_PKEY_CTX_set_params(ctx, params))
-        || !TEST_true(EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, tst->mod))
-        || !TEST_true(EVP_PKEY_CTX_set1_rsa_keygen_pubexp(ctx, e_bn))
+        || !TEST_int_gt(EVP_PKEY_CTX_set_params(ctx, params), 0)
+        || !TEST_int_gt(EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, tst->mod), 0)
+        || !TEST_int_gt(EVP_PKEY_CTX_set1_rsa_keygen_pubexp(ctx, e_bn), 0)
         || !TEST_int_gt(EVP_PKEY_keygen(ctx, &pkey), 0)
         || !TEST_true(pkey_get_bn_bytes(pkey, OSSL_PKEY_PARAM_RSA_TEST_P1,
                                         &p1, &p1_len))
@@ -1381,6 +1381,8 @@ static int drbg_test(int id)
     res = 1;
 err:
     EVP_RAND_CTX_free(ctx);
+    /* Coverity is confused by the upref/free in EVP_RAND_CTX_new() subdue it */
+    /* coverity[pass_freed_arg] */
     EVP_RAND_CTX_free(parent);
     EVP_RAND_free(rand);
     return res;

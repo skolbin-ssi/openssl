@@ -1,7 +1,7 @@
 /*
  * {- join("\n * ", @autowarntext) -}
  *
- * Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
  * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved
  * Copyright 2005 Nokia. All rights reserved.
  *
@@ -43,6 +43,9 @@ use OpenSSL::stackhash qw(generate_stack_macros generate_const_stack_macros);
 # include <openssl/ct.h>
 # include <openssl/sslerr.h>
 # include <openssl/prov_ssl.h>
+# ifndef OPENSSL_NO_STDIO
+#  include <stdio.h>
+# endif
 
 #ifdef  __cplusplus
 extern "C" {
@@ -942,6 +945,7 @@ uint32_t SSL_get_recv_max_early_data(const SSL *s);
 # include <openssl/tls1.h>      /* This is mostly sslv3 with a few tweaks */
 # include <openssl/dtls1.h>     /* Datagram TLS */
 # include <openssl/srtp.h>      /* Support for the use_srtp extension */
+# include <openssl/quic.h>
 
 #ifdef  __cplusplus
 extern "C" {

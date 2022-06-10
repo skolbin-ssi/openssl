@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2020-2022 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -227,7 +227,7 @@ static int der2key_decode(void *vctx, OSSL_CORE_BIO *cin, int selection,
         derp = der;
         if (ctx->desc->d2i_PUBKEY != NULL)
             key = ctx->desc->d2i_PUBKEY(NULL, &derp, der_len);
-        else
+        else if (ctx->desc->d2i_public_key != NULL)
             key = ctx->desc->d2i_public_key(NULL, &derp, der_len);
         if (key == NULL && ctx->selection != 0) {
             ERR_clear_last_mark();
