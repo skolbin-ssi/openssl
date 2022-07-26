@@ -601,7 +601,7 @@ int ASN1_TIME_compare(const ASN1_TIME *a, const ASN1_TIME *b)
 # define USE_TIMEGM
 #endif
 
-time_t asn1_string_to_time_t(const char *asn1_string)
+time_t ossl_asn1_string_to_time_t(const char *asn1_string)
 {
     ASN1_TIME *timestamp_asn1 = NULL;
     struct tm *timestamp_tm = NULL;
@@ -618,7 +618,10 @@ time_t asn1_string_to_time_t(const char *asn1_string)
     }
 
     timestamp_tm = OPENSSL_malloc(sizeof(*timestamp_tm));
-
+    if (timestamp_tm == NULL) {
+        ASN1_TIME_free(timestamp_asn1);
+        return -1;
+    }
     if (!(ASN1_TIME_to_tm(timestamp_asn1, timestamp_tm))) {
         OPENSSL_free(timestamp_tm);
         ASN1_TIME_free(timestamp_asn1);

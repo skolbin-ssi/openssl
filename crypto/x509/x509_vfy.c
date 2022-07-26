@@ -124,6 +124,7 @@ static int lookup_cert_match(X509 **result, X509_STORE_CTX *ctx, X509 *x)
     ERR_pop_to_mark();
     if (certs == NULL)
         return -1;
+
     /* Look for exact match */
     for (i = 0; i < sk_X509_num(certs); i++) {
         xtmp = sk_X509_value(certs, i);
@@ -147,7 +148,7 @@ static int lookup_cert_match(X509 **result, X509_STORE_CTX *ctx, X509 *x)
  * The error code is set to |err| if |err| is not X509_V_OK, else
  * |ctx->error| is left unchanged (under the assumption it is set elsewhere).
  * The error depth is |depth| if >= 0, else it defaults to |ctx->error_depth|.
- * The error cert is |x| if not NULL, else defaults to the chain cert at depth.
+ * The error cert is |x| if not NULL, else the cert in |ctx->chain| at |depth|.
  *
  * Returns 0 to abort verification with an error, non-zero to continue.
  */
@@ -157,7 +158,7 @@ static int verify_cb_cert(X509_STORE_CTX *ctx, X509 *x, int depth, int err)
         depth = ctx->error_depth;
     else
         ctx->error_depth = depth;
-    ctx->current_cert = (x != NULL) ? x : sk_X509_value(ctx->chain, depth);
+    ctx->current_cert = x != NULL ? x : sk_X509_value(ctx->chain, depth);
     if (err != X509_V_OK)
         ctx->error = err;
     return ctx->verify_cb(0, ctx);
@@ -348,7 +349,7 @@ static X509 *find_issuer(X509_STORE_CTX *ctx, STACK_OF(X509) *sk, X509 *x)
     return rv;
 }
 
-/* Check that the given certificate 'x' is issued by the certificate 'issuer' */
+/* Check that the given certificate |x| is issued by the certificate |issuer| */
 static int check_issued(ossl_unused X509_STORE_CTX *ctx, X509 *x, X509 *issuer)
 {
     int err = ossl_x509_likely_issued(issuer, x);
@@ -359,8 +360,6 @@ static int check_issued(ossl_unused X509_STORE_CTX *ctx, X509 *x, X509 *issuer)
      * SUBJECT_ISSUER_MISMATCH just means 'x' is clearly not issued by 'issuer'.
      * Every other error code likely indicates a real error.
      */
-    if (err != X509_V_ERR_SUBJECT_ISSUER_MISMATCH)
-        ctx->error = err;
     return 0;
 }
 
@@ -371,17 +370,16 @@ static int check_issued(ossl_unused X509_STORE_CTX *ctx, X509 *x, X509 *issuer)
 static int get_issuer_sk(X509 **issuer, X509_STORE_CTX *ctx, X509 *x)
 {
     *issuer = find_issuer(ctx, ctx->other_ctx, x);
-    if (*issuer != NULL)
-        return X509_up_ref(*issuer) ? 1 : -1;
-    return 0;
+    if (*issuer == NULL)
+        return 0;
+    return X509_up_ref(*issuer) ? 1 : -1;
 }
 
 /*-
  * Alternative lookup method: look from a STACK stored in other_ctx.
  * Returns NULL on internal/fatal error, empty stack if not found.
  */
-static STACK_OF(X509) *lookup_certs_sk(X509_STORE_CTX *ctx,
-                                       const X509_NAME *nm)
+static STACK_OF(X509) *lookup_certs_sk(X509_STORE_CTX *ctx, const X509_NAME *nm)
 {
     STACK_OF(X509) *sk = sk_X509_new_null();
     X509 *x;
@@ -876,7 +874,7 @@ static int check_trust(X509_STORE_CTX *ctx, int num_untrusted)
         res = lookup_cert_match(&mx, ctx, x);
         if (res < 0)
             return res;
-        if (mx == NULL)
+        if (res == 0)
             return X509_TRUST_UNTRUSTED;
 
         /*
@@ -1860,6 +1858,7 @@ int X509_cmp_current_time(const ASN1_TIME *ctm)
     return X509_cmp_time(ctm, NULL);
 }
 
+/* returns 0 on error, otherwise 1 if ctm > cmp_time, else -1 */
 int X509_cmp_time(const ASN1_TIME *ctm, time_t *cmp_time)
 {
     static const size_t utctime_length = sizeof("YYMMDDHHMMSSZ") - 1;
@@ -2029,8 +2028,8 @@ X509_CRL *X509_CRL_diff(X509_CRL *base, X509_CRL *newer,
 {
     X509_CRL *crl = NULL;
     int i;
-
     STACK_OF(X509_REVOKED) *revs = NULL;
+
     /* CRLs can't be delta already */
     if (base->base_crl_number != NULL || newer->base_crl_number != NULL) {
         ERR_raise(ERR_LIB_X509, X509_R_CRL_ALREADY_DELTA);
@@ -3014,7 +3013,6 @@ static int build_chain(X509_STORE_CTX *ctx)
     int alt_untrusted = 0;
     int max_depth;
     int ok = 0;
-    int prev_error = ctx->error;
     int i;
 
     /* Our chain starts with a single untrusted element. */
@@ -3167,11 +3165,8 @@ static int build_chain(X509_STORE_CTX *ctx)
                         dane->pdpth = -1;
                 }
 
-                /*
-                 * Self-signed untrusted certificates get replaced by their
-                 * trusted matching issuer.  Otherwise, grow the chain.
-                 */
-                if (!self_signed) {
+                if (!self_signed) { /* untrusted not self-signed certificate */
+                    /* Grow the chain by trusted issuer */
                     if (!sk_X509_push(ctx->chain, issuer)) {
                         X509_free(issuer);
                         goto memerr;
@@ -3180,7 +3175,7 @@ static int build_chain(X509_STORE_CTX *ctx)
                         goto int_err;
                 } else {
                     /*
-                     * We have a self-signed certificate that has the same
+                     * We have a self-signed untrusted cert that has the same
                      * subject name (and perhaps keyid and/or serial number) as
                      * a trust anchor.  We must have an exact match to avoid
                      * possible impersonation via key substitution etc.
@@ -3190,6 +3185,10 @@ static int build_chain(X509_STORE_CTX *ctx)
                         X509_free(issuer);
                         ok = 0;
                     } else { /* curr "==" issuer */
+                        /*
+                         * Replace self-signed untrusted certificate
+                         * by its trusted matching issuer.
+                         */
                         X509_free(curr);
                         ctx->num_untrusted = --num;
                         (void)sk_X509_set(ctx->chain, num, issuer);
@@ -3242,7 +3241,7 @@ static int build_chain(X509_STORE_CTX *ctx)
         }
 
         /*
-         * Extend chain with peer-provided untrusted certificates
+         * Try to extend chain with peer-provided untrusted certificate
          */
         if ((search & S_DOUNTRUSTED) != 0) {
             num = sk_X509_num(ctx->chain);
@@ -3266,6 +3265,7 @@ static int build_chain(X509_STORE_CTX *ctx)
             /* Drop this issuer from future consideration */
             (void)sk_X509_delete_ptr(sk_untrusted, issuer);
 
+            /* Grow the chain by untrusted issuer */
             if (!X509_add_cert(ctx->chain, issuer, X509_ADD_FLAG_UP_REF))
                 goto int_err;
 
@@ -3296,8 +3296,6 @@ static int build_chain(X509_STORE_CTX *ctx)
 
     switch (trust) {
     case X509_TRUST_TRUSTED:
-        /* Must restore any previous error value for backward compatibility */
-        ctx->error = prev_error;
         return 1;
     case X509_TRUST_REJECTED:
         /* Callback already issued */
@@ -3309,7 +3307,7 @@ static int build_chain(X509_STORE_CTX *ctx)
         case X509_V_ERR_CERT_NOT_YET_VALID:
         case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
         case X509_V_ERR_CERT_HAS_EXPIRED:
-            return 0; /* Callback already issued by ossl_x509_check_cert_time() */
+            return 0; /* Callback already done by ossl_x509_check_cert_time() */
         default: /* A preliminary error has become final */
             return verify_cb_cert(ctx, NULL, num - 1, ctx->error);
         case X509_V_OK:
@@ -3430,21 +3428,19 @@ static int check_key_level(X509_STORE_CTX *ctx, X509 *cert)
 static int check_curve(X509 *cert)
 {
     EVP_PKEY *pkey = X509_get0_pubkey(cert);
+    int ret, val;
 
     /* Unsupported or malformed key */
     if (pkey == NULL)
         return -1;
+    if (EVP_PKEY_get_id(pkey) != EVP_PKEY_EC)
+        return 1;
 
-    if (EVP_PKEY_get_id(pkey) == EVP_PKEY_EC) {
-        int ret, val;
-
-        ret = EVP_PKEY_get_int_param(pkey,
-                                     OSSL_PKEY_PARAM_EC_DECODED_FROM_EXPLICIT_PARAMS,
-                                     &val);
-        return ret < 0 ? ret : !val;
-    }
-
-    return 1;
+    ret =
+        EVP_PKEY_get_int_param(pkey,
+                               OSSL_PKEY_PARAM_EC_DECODED_FROM_EXPLICIT_PARAMS,
+                               &val);
+    return ret < 0 ? ret : !val;
 }
 
 /*-

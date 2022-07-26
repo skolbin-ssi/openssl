@@ -19,6 +19,7 @@
 # endif
 
 # include "internal/common.h"
+# include "crypto/asn1.h"
 
 # include <openssl/crypto.h>
 # include <openssl/buffer.h>
@@ -30,7 +31,7 @@ typedef struct ex_callback_st EX_CALLBACK;
 DEFINE_STACK_OF(EX_CALLBACK)
 
 typedef struct mem_st MEM;
-DEFINE_LHASH_OF(MEM);
+DEFINE_LHASH_OF_EX(MEM);
 
 void OPENSSL_cpuid_setup(void);
 #if defined(__i386)   || defined(__i386__)   || defined(_M_IX86) || \

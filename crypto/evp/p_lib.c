@@ -1039,11 +1039,10 @@ const char *evp_pkey_type2name(int type)
 
 int EVP_PKEY_is_a(const EVP_PKEY *pkey, const char *name)
 {
-    if (pkey->keymgmt == NULL) {
-        int type = evp_pkey_name2type(name);
-
-        return pkey->type == type;
-    }
+    if (pkey == NULL)
+        return 0;
+    if (pkey->keymgmt == NULL)
+        return pkey->type == evp_pkey_name2type(name);
     return EVP_KEYMGMT_is_a(pkey->keymgmt, name);
 }
 
@@ -1389,6 +1388,7 @@ size_t EVP_PKEY_get1_encoded_public_key(EVP_PKEY *pkey, unsigned char **ppub)
 
     if (pkey != NULL && evp_pkey_is_provided(pkey)) {
         size_t return_size = OSSL_PARAM_UNMODIFIED;
+        unsigned char *buf;
 
         /*
          * We know that this is going to fail, but it will give us a size
@@ -1400,14 +1400,18 @@ size_t EVP_PKEY_get1_encoded_public_key(EVP_PKEY *pkey, unsigned char **ppub)
         if (return_size == OSSL_PARAM_UNMODIFIED)
             return 0;
 
-        *ppub = OPENSSL_malloc(return_size);
-        if (*ppub == NULL)
+        *ppub = NULL;
+        buf = OPENSSL_malloc(return_size);
+        if (buf == NULL)
             return 0;
 
         if (!EVP_PKEY_get_octet_string_param(pkey,
                                              OSSL_PKEY_PARAM_ENCODED_PUBLIC_KEY,
-                                             *ppub, return_size, NULL))
+                                             buf, return_size, NULL)) {
+            OPENSSL_free(buf);
             return 0;
+        }
+        *ppub = buf;
         return return_size;
     }
 
@@ -1853,7 +1857,7 @@ void *evp_pkey_export_to_provider(EVP_PKEY *pk, OSSL_LIB_CTX *libctx,
 
         if (ctx == NULL)
             goto end;
-        tmp_keymgmt = ctx->keymgmt;
+        allocated_keymgmt = tmp_keymgmt = ctx->keymgmt;
         ctx->keymgmt = NULL;
         EVP_PKEY_CTX_free(ctx);
     }
@@ -1966,8 +1970,10 @@ void *evp_pkey_export_to_provider(EVP_PKEY *pk, OSSL_LIB_CTX *libctx,
     if (keydata == NULL)
         tmp_keymgmt = NULL;
 
-    if (keymgmt != NULL)
+    if (keymgmt != NULL && tmp_keymgmt != NULL) {
         *keymgmt = tmp_keymgmt;
+        allocated_keymgmt = NULL;
+    }
 
     EVP_KEYMGMT_free(allocated_keymgmt);
     return keydata;
