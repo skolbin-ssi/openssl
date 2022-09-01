@@ -24,6 +24,10 @@ OpenSSL 3.1
 
 ### Changes between 3.0 and 3.1 [xx XXX xxxx]
 
+ * Major refactor of the libssl record layer
+
+   *Matt Caswell*
+
  * Added a new BIO_s_dgram_mem() to read/write datagrams to memory
 
    *Matt Caswell*
@@ -168,6 +172,12 @@ OpenSSL 3.1
    The checks are meanwhile more complete and yield fewer false positives.
 
    *David von Oheimb*
+
+ * Add new BIO_sendmmsg() and BIO_recvmmsg() BIO methods which allow
+   sending and receiving multiple messages in a single call. An implementation
+   is provided for BIO_dgram. For further details, see BIO_sendmmsg(3).
+
+   *Hugo Landau*
 
 OpenSSL 3.0
 -----------

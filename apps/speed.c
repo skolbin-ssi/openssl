@@ -67,6 +67,7 @@
 #  define HAVE_FORK 0
 # else
 #  define HAVE_FORK 1
+#  include <sys/wait.h>
 # endif
 #endif
 
@@ -2018,7 +2019,7 @@ int speed_main(int argc, char **argv)
                 goto end;
 
             if (!EVP_MAC_CTX_set_params(loopargs[i].mctx, params))
-                goto end;
+                goto skip_hmac; /* Digest not found */
         }
         for (testnum = 0; testnum < size_num; testnum++) {
             print_message(names[D_HMAC], c[D_HMAC][testnum], lengths[testnum],
@@ -2035,7 +2036,7 @@ int speed_main(int argc, char **argv)
         EVP_MAC_free(mac);
         mac = NULL;
     }
-
+skip_hmac:
     if (doit[D_CBC_DES]) {
         int st = 1;
 
@@ -3432,6 +3433,7 @@ static int do_multi(int multi, int size_num)
     int n;
     int fd[2];
     int *fds;
+    int status;
     static char sep[] = ":";
 
     fds = app_malloc(sizeof(*fds) * multi, "fd buffer for do_multi");
@@ -3581,6 +3583,20 @@ static int do_multi(int multi, int size_num)
         fclose(f);
     }
     OPENSSL_free(fds);
+    for (n = 0; n < multi; ++n) {
+        while (wait(&status) == -1)
+            if (errno != EINTR) {
+                BIO_printf(bio_err, "Waitng for child failed with 0x%x\n",
+                           errno);
+                return 1;
+            }
+        if (WIFEXITED(status) && WEXITSTATUS(status)) {
+            BIO_printf(bio_err, "Child exited with %d\n", WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            BIO_printf(bio_err, "Child terminated by signal %d\n",
+                       WTERMSIG(status));
+        }
+    }
     return 1;
 }
 #endif

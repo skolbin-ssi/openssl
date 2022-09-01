@@ -25,6 +25,10 @@ my @valid = glob(data_file("valid", "*.pem"));
 my @noncanon = glob(data_file("noncanon", "*.pem"));
 my @invalid = glob(data_file("invalid", "*.pem"));
 
+if (disabled("sm2")) {
+    @valid = grep { !/sm2-.*\.pem/} @valid;
+}
+
 plan tests => 12;
 
 sub checkload {
@@ -119,7 +123,7 @@ subtest "Check pkeyparam does not change the parameter file on output" => sub {
 subtest "Check loading of fips and non-fips params" => sub {
     plan skip_all => "FIPS is disabled"
         if $no_fips;
-    plan tests => 3;
+    plan tests => 8;
 
     my $fipsconf = srctop_file("test", "fips-and-base.cnf");
     my $defaultconf = srctop_file("test", "default.cnf");
@@ -140,6 +144,37 @@ subtest "Check loading of fips and non-fips params" => sub {
                 '-in', data_file('valid', 'secp112r1-named.pem'),
                 '-check'])),
        "Fail loading named non-fips curve");
+
+    ok(!run(app(['openssl', 'pkeyparam',
+                '-in', data_file('valid', 'secp112r1-named.pem'),
+                '-check'])),
+       "Fail loading named non-fips curve using pkeyparam");
+
+    ok(run(app(['openssl', 'ecparam',
+                '-provider', 'default',
+                '-propquery', '?fips!=yes',
+                '-in', data_file('valid', 'secp112r1-named.pem'),
+                '-check'])),
+       "Loading named non-fips curve in FIPS mode with non-FIPS property".
+       " query");
+
+    ok(run(app(['openssl', 'pkeyparam',
+                '-provider', 'default',
+                '-propquery', '?fips!=yes',
+                '-in', data_file('valid', 'secp112r1-named.pem'),
+                '-check'])),
+       "Loading named non-fips curve in FIPS mode with non-FIPS property".
+       " query using pkeyparam");
+
+    ok(!run(app(['openssl', 'ecparam',
+                '-genkey', '-name', 'secp112r1'])),
+       "Fail generating key for named non-fips curve");
+
+    ok(run(app(['openssl', 'ecparam',
+                '-provider', 'default',
+                '-propquery', '?fips!=yes',
+                '-genkey', '-name', 'secp112r1'])),
+       "Generating key for named non-fips curve with non-FIPS property query");
 
     $ENV{OPENSSL_CONF} = $defaultconf;
 };
