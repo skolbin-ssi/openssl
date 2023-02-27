@@ -70,7 +70,7 @@ const OPTIONS x509_options[] = {
     {"copy_extensions", OPT_COPY_EXTENSIONS, 's',
      "copy extensions when converting from CSR to x509 or vice versa"},
     {"inform", OPT_INFORM, 'f',
-     "CSR input file format (DER or PEM) - default PEM"},
+     "CSR input format to use (PEM or DER; by default try PEM first)"},
     {"vfyopt", OPT_VFYOPT, 's', "CSR verification parameter in n:v form"},
     {"key", OPT_KEY, 's',
      "Key for signing, and to include unless using -force_pubkey"},
@@ -706,7 +706,7 @@ int x509_main(int argc, char **argv)
         if (infile == NULL)
             BIO_printf(bio_err,
                        "Warning: Reading cert request from stdin since no -in option is given\n");
-        req = load_csr(infile, informat, "certificate request input");
+        req = load_csr_autofmt(infile, informat, "certificate request input");
         if (req == NULL)
             goto end;
 
@@ -781,9 +781,6 @@ int x509_main(int argc, char **argv)
     out = bio_open_default(outfile, 'w', outformat);
     if (out == NULL)
         goto end;
-
-    if (!noout || text || next_serial)
-        OBJ_create("2.99999.3", "SET.ex3", "SET x509v3 extension 3");
 
     if (alias)
         X509_alias_set1(x, (unsigned char *)alias, -1);
@@ -897,7 +894,7 @@ int x509_main(int argc, char **argv)
         }
         noout = 1;
     } else if (privkey != NULL) {
-        if (!do_X509_sign(x, privkey, digest, sigopts, &ext_ctx))
+        if (!do_X509_sign(x, 0, privkey, digest, sigopts, &ext_ctx))
             goto end;
     } else if (CAfile != NULL) {
         if ((CAkey = load_key(CAkeyfile, CAkeyformat,
@@ -909,7 +906,7 @@ int x509_main(int argc, char **argv)
             goto err;
         }
 
-        if (!do_X509_sign(x, CAkey, digest, sigopts, &ext_ctx))
+        if (!do_X509_sign(x, 0, CAkey, digest, sigopts, &ext_ctx))
             goto end;
     }
     if (badsig) {

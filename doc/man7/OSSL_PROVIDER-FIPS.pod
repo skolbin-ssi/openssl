@@ -7,7 +7,7 @@ OSSL_PROVIDER-FIPS - OpenSSL FIPS provider
 =head1 DESCRIPTION
 
 The OpenSSL FIPS provider is a special provider that conforms to the Federal
-Information Processing Standards (FIPS) specified in FIPS 140-2. This 'module'
+Information Processing Standards (FIPS) specified in FIPS 140-3. This 'module'
 contains an approved set of cryptographic algorithms that is validated by an
 accredited testing laboratory.
 
@@ -32,7 +32,7 @@ L<EVP_PKEY_CTX_new_from_name(3)>.
 It isn't mandatory to query for any of these properties, except to
 make sure to get implementations of this provider and none other.
 
-The "fips=yes" property can be use to make sure only FIPS approved
+The C<fips=yes> property can be use to make sure only FIPS approved
 implementations are used for crypto operations.  This may also include
 other non-crypto support operations that are not in the FIPS provider,
 such as asymmetric key encoders,
@@ -62,8 +62,6 @@ The OpenSSL FIPS provider supports these operations and algorithms:
 
 =item AES, see L<EVP_CIPHER-AES(7)>
 
-=item DES-EDE3 (TripleDES), see L<EVP_CIPHER-DES(7)>
-
 =back
 
 =head2 Message Authentication Code (MAC)
@@ -88,7 +86,7 @@ The OpenSSL FIPS provider supports these operations and algorithms:
 
 =item TLS13-KDF, see L<EVP_KDF-TLS13_KDF(7)>
 
-=item SSKDF, see L<EVP_KDF-SSKDF(7)>
+=item SSKDF, see L<EVP_KDF-SS(7)>
 
 =item PBKDF2, see L<EVP_KDF-PBKDF2(7)>
 
@@ -96,7 +94,7 @@ The OpenSSL FIPS provider supports these operations and algorithms:
 
 =item TLS1-PRF, see L<EVP_KDF-TLS1_PRF(7)>
 
-=item KBKDF, see L<EVP_KDF-KBKDF(7)>
+=item KBKDF, see L<EVP_KDF-KB(7)>
 
 =item X942KDF-ASN1, see L<EVP_KDF-X942-ASN1(7)>
 
@@ -124,8 +122,6 @@ The OpenSSL FIPS provider supports these operations and algorithms:
 
 =over 4
 
-=item DSA, see L<EVP_KEYEXCH-DSA(7)>
-
 =item RSA, see L<EVP_SIGNATURE-RSA(7)>
 
 =item X25519, see L<EVP_SIGNATURE-ED25519(7)>
@@ -142,7 +138,7 @@ The OpenSSL FIPS provider supports these operations and algorithms:
 
 =over 4
 
-=item RSA, see L<EVP_KEYEXCH-RSA(7)>
+=item RSA, see L<EVP_ASYM_CIPHER-RSA(7)>
 
 =back
 
@@ -394,6 +390,22 @@ A simple self test callback is shown below for illustrative purposes.
     return ret;
   }
 
+=head1 NOTES
+
+The FIPS provider in OpenSSL 3.1 includes some non-FIPS validated algorithms,
+consequently the property query C<fips=yes> is mandatory for applications that
+want to operate in a FIPS approved manner.  The algorithms are:
+
+=over 4
+
+=item Triple DES ECB
+
+=item Triple DES CBC
+
+=item EdDSA
+
+=back
+
 =head1 SEE ALSO
 
 L<openssl-fipsinstall(1)>,
@@ -407,7 +419,11 @@ L<provider(7)>
 
 =head1 HISTORY
 
-The type and functions described here were added in OpenSSL 3.0.
+This functionality was added in OpenSSL 3.0.
+
+OpenSSL 3.0 includes a FIPS 140-2 approved FIPS provider.
+
+OpenSSL 3.1 includes a FIPS 140-3 approved FIPS provider.
 
 =head1 COPYRIGHT
 

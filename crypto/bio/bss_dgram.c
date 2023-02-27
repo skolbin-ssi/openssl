@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include "internal/time.h"
 #include "bio_local.h"
 #ifndef OPENSSL_NO_DGRAM
 
@@ -149,8 +150,6 @@ static void dgram_sctp_handle_auth_free_key_event(BIO *b, union sctp_notificatio
 
 static int BIO_dgram_should_retry(int s);
 
-static void get_current_time(struct timeval *t);
-
 static const BIO_METHOD methods_dgramp = {
     BIO_TYPE_DGRAM,
     "datagram socket",
@@ -193,8 +192,8 @@ typedef struct bio_dgram_data_st {
     unsigned int connected;
     unsigned int _errno;
     unsigned int mtu;
-    struct timeval next_timeout;
-    struct timeval socket_timeout;
+    OSSL_TIME next_timeout;
+    OSSL_TIME socket_timeout;
     unsigned int peekmode;
     char local_addr_enabled;
 } bio_dgram_data;
@@ -283,70 +282,55 @@ static void dgram_adjust_rcv_timeout(BIO *b)
 {
 # if defined(SO_RCVTIMEO)
     bio_dgram_data *data = (bio_dgram_data *)b->ptr;
+    OSSL_TIME timeleft;
 
     /* Is a timer active? */
-    if (data->next_timeout.tv_sec > 0 || data->next_timeout.tv_usec > 0) {
-        struct timeval timenow, timeleft;
-
+    if (!ossl_time_is_zero(data->next_timeout)) {
         /* Read current socket timeout */
 #  ifdef OPENSSL_SYS_WINDOWS
         int timeout;
-
         int sz = sizeof(timeout);
+
         if (getsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
-                       (void *)&timeout, &sz) < 0) {
-            perror("getsockopt");
-        } else {
-            data->socket_timeout.tv_sec = timeout / 1000;
-            data->socket_timeout.tv_usec = (timeout % 1000) * 1000;
-        }
+                       (void *)&timeout, &sz) < 0)
+            ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                           "calling getsockopt()");
+        else
+            data->socket_timeout = ossl_ms2time(timeout);
 #  else
-        socklen_t sz = sizeof(data->socket_timeout);
-        if (getsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
-                       &(data->socket_timeout), &sz) < 0) {
-            perror("getsockopt");
-        } else
-            OPENSSL_assert(sz <= sizeof(data->socket_timeout));
+        struct timeval tv;
+        socklen_t sz = sizeof(tv);
+
+        if (getsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO, &tv, &sz) < 0)
+            ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                           "calling getsockopt()");
+        else
+            data->socket_timeout = ossl_time_from_timeval(tv);
 #  endif
 
-        /* Get current time */
-        get_current_time(&timenow);
-
         /* Calculate time left until timer expires */
-        memcpy(&timeleft, &(data->next_timeout), sizeof(struct timeval));
-        if (timeleft.tv_usec < timenow.tv_usec) {
-            timeleft.tv_usec = 1000000 - timenow.tv_usec + timeleft.tv_usec;
-            timeleft.tv_sec--;
-        } else {
-            timeleft.tv_usec -= timenow.tv_usec;
-        }
-        if (timeleft.tv_sec < timenow.tv_sec) {
-            timeleft.tv_sec = 0;
-            timeleft.tv_usec = 1;
-        } else {
-            timeleft.tv_sec -= timenow.tv_sec;
-        }
+        timeleft = ossl_time_subtract(data->next_timeout, ossl_time_now());
+        if (ossl_time_compare(timeleft, ossl_ticks2time(OSSL_TIME_US)) < 0)
+            timeleft = ossl_ticks2time(OSSL_TIME_US);
 
         /*
          * Adjust socket timeout if next handshake message timer will expire
          * earlier.
          */
-        if ((data->socket_timeout.tv_sec == 0
-             && data->socket_timeout.tv_usec == 0)
-            || (data->socket_timeout.tv_sec > timeleft.tv_sec)
-            || (data->socket_timeout.tv_sec == timeleft.tv_sec
-                && data->socket_timeout.tv_usec >= timeleft.tv_usec)) {
+        if (ossl_time_is_zero(data->socket_timeout)
+            || ossl_time_compare(data->socket_timeout, timeleft) >= 0) {
 #  ifdef OPENSSL_SYS_WINDOWS
-            timeout = timeleft.tv_sec * 1000 + timeleft.tv_usec / 1000;
+            timeout = (int)ossl_time2ms(timeleft);
             if (setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
-                           (void *)&timeout, sizeof(timeout)) < 0) {
-                perror("setsockopt");
-            }
+                           (void *)&timeout, sizeof(timeout)) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
 #  else
-            if (setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO, &timeleft,
-                           sizeof(struct timeval)) < 0) {
-                perror("setsockopt");
-            }
+            tv = ossl_time_to_timeval(timeleft);
+            if (setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO, &tv,
+                           sizeof(tv)) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
 #  endif
         }
     }
@@ -380,20 +364,20 @@ static void dgram_reset_rcv_timeout(BIO *b)
     bio_dgram_data *data = (bio_dgram_data *)b->ptr;
 
     /* Is a timer active? */
-    if (data->next_timeout.tv_sec > 0 || data->next_timeout.tv_usec > 0) {
+    if (!ossl_time_is_zero(data->next_timeout)) {
 #  ifdef OPENSSL_SYS_WINDOWS
-        int timeout = data->socket_timeout.tv_sec * 1000 +
-            data->socket_timeout.tv_usec / 1000;
+        int timeout = (int)ossl_time2ms(data->socket_timeout);
+
         if (setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
-                       (void *)&timeout, sizeof(timeout)) < 0) {
-            perror("setsockopt");
-        }
+                       (void *)&timeout, sizeof(timeout)) < 0)
+            ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                           "calling setsockopt()");
 #  else
-        if (setsockopt
-            (b->num, SOL_SOCKET, SO_RCVTIMEO, &(data->socket_timeout),
-             sizeof(struct timeval)) < 0) {
-            perror("setsockopt");
-        }
+        struct timeval tv = ossl_time_to_timeval(data->socket_timeout);
+
+        if (setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+            ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                           "calling setsockopt()");
 #  endif
     }
 # endif
@@ -543,7 +527,10 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
     long ret = 1;
     int *ip;
     bio_dgram_data *data = NULL;
+# ifndef __DJGPP__
+    /* There are currently no cases where this is used on djgpp/watt32. */
     int sockopt_val = 0;
+# endif
     int d_errno;
 # if defined(OPENSSL_SYS_LINUX) && (defined(IP_MTU_DISCOVER) || defined(IP_MTU))
     socklen_t sockopt_len;      /* assume that system supporting IP_MTU is
@@ -615,14 +602,16 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
             sockopt_val = IP_PMTUDISC_DO;
             if ((ret = setsockopt(b->num, IPPROTO_IP, IP_MTU_DISCOVER,
                                   &sockopt_val, sizeof(sockopt_val))) < 0)
-                perror("setsockopt");
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
             break;
 #  if OPENSSL_USE_IPV6 && defined(IPV6_MTU_DISCOVER) && defined(IPV6_PMTUDISC_DO)
         case AF_INET6:
             sockopt_val = IPV6_PMTUDISC_DO;
             if ((ret = setsockopt(b->num, IPPROTO_IPV6, IPV6_MTU_DISCOVER,
                                   &sockopt_val, sizeof(sockopt_val))) < 0)
-                perror("setsockopt");
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
             break;
 #  endif
         default:
@@ -734,7 +723,7 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
         BIO_ADDR_make(&data->peer, BIO_ADDR_sockaddr((BIO_ADDR *)ptr));
         break;
     case BIO_CTRL_DGRAM_SET_NEXT_TIMEOUT:
-        memcpy(&(data->next_timeout), ptr, sizeof(struct timeval));
+        data->next_timeout = ossl_time_from_timeval(*(struct timeval *)ptr);
         break;
 # if defined(SO_RCVTIMEO)
     case BIO_CTRL_DGRAM_SET_RECV_TIMEOUT:
@@ -742,18 +731,17 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
         {
             struct timeval *tv = (struct timeval *)ptr;
             int timeout = tv->tv_sec * 1000 + tv->tv_usec / 1000;
-            if (setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
-                           (void *)&timeout, sizeof(timeout)) < 0) {
-                perror("setsockopt");
-                ret = -1;
-            }
+
+            if ((ret = setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
+                                  (void *)&timeout, sizeof(timeout))) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
         }
 #  else
-        if (setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO, ptr,
-                       sizeof(struct timeval)) < 0) {
-            perror("setsockopt");
-            ret = -1;
-        }
+        if ((ret = setsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO, ptr,
+                              sizeof(struct timeval))) < 0)
+            ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                           "calling setsockopt()");
 #  endif
         break;
     case BIO_CTRL_DGRAM_GET_RECV_TIMEOUT:
@@ -764,10 +752,10 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
             struct timeval *tv = (struct timeval *)ptr;
 
             sz = sizeof(timeout);
-            if (getsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
-                           (void *)&timeout, &sz) < 0) {
-                perror("getsockopt");
-                ret = -1;
+            if ((ret = getsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
+                                  (void *)&timeout, &sz)) < 0) {
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling getsockopt()");
             } else {
                 tv->tv_sec = timeout / 1000;
                 tv->tv_usec = (timeout % 1000) * 1000;
@@ -775,12 +763,12 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
             }
 #  else
             socklen_t sz = sizeof(struct timeval);
-            if (getsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
-                           ptr, &sz) < 0) {
-                perror("getsockopt");
-                ret = -1;
+            if ((ret = getsockopt(b->num, SOL_SOCKET, SO_RCVTIMEO,
+                                  ptr, &sz)) < 0) {
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling getsockopt()");
             } else {
-                OPENSSL_assert(sz <= sizeof(struct timeval));
+                OPENSSL_assert((size_t)sz <= sizeof(struct timeval));
                 ret = (int)sz;
             }
 #  endif
@@ -793,18 +781,17 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
         {
             struct timeval *tv = (struct timeval *)ptr;
             int timeout = tv->tv_sec * 1000 + tv->tv_usec / 1000;
-            if (setsockopt(b->num, SOL_SOCKET, SO_SNDTIMEO,
-                           (void *)&timeout, sizeof(timeout)) < 0) {
-                perror("setsockopt");
-                ret = -1;
-            }
+
+            if ((ret = setsockopt(b->num, SOL_SOCKET, SO_SNDTIMEO,
+                                  (void *)&timeout, sizeof(timeout))) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
         }
 #  else
-        if (setsockopt(b->num, SOL_SOCKET, SO_SNDTIMEO, ptr,
-                       sizeof(struct timeval)) < 0) {
-            perror("setsockopt");
-            ret = -1;
-        }
+        if ((ret = setsockopt(b->num, SOL_SOCKET, SO_SNDTIMEO, ptr,
+                              sizeof(struct timeval))) < 0)
+            ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                           "calling setsockopt()");
 #  endif
         break;
     case BIO_CTRL_DGRAM_GET_SEND_TIMEOUT:
@@ -815,10 +802,10 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
             struct timeval *tv = (struct timeval *)ptr;
 
             sz = sizeof(timeout);
-            if (getsockopt(b->num, SOL_SOCKET, SO_SNDTIMEO,
-                           (void *)&timeout, &sz) < 0) {
-                perror("getsockopt");
-                ret = -1;
+            if ((ret = getsockopt(b->num, SOL_SOCKET, SO_SNDTIMEO,
+                                  (void *)&timeout, &sz)) < 0) {
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling getsockopt()");
             } else {
                 tv->tv_sec = timeout / 1000;
                 tv->tv_usec = (timeout % 1000) * 1000;
@@ -826,12 +813,13 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
             }
 #  else
             socklen_t sz = sizeof(struct timeval);
-            if (getsockopt(b->num, SOL_SOCKET, SO_SNDTIMEO,
-                           ptr, &sz) < 0) {
-                perror("getsockopt");
-                ret = -1;
+
+            if ((ret = getsockopt(b->num, SOL_SOCKET, SO_SNDTIMEO,
+                                  ptr, &sz)) < 0) {
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling getsockopt()");
             } else {
-                OPENSSL_assert(sz <= sizeof(struct timeval));
+                OPENSSL_assert((size_t)sz <= sizeof(struct timeval));
                 ret = (int)sz;
             }
 #  endif
@@ -862,30 +850,27 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
         break;
 # endif
     case BIO_CTRL_DGRAM_SET_DONT_FRAG:
-        sockopt_val = num ? 1 : 0;
-
         switch (data->peer.sa.sa_family) {
         case AF_INET:
 # if defined(IP_DONTFRAG)
+            sockopt_val = num ? 1 : 0;
             if ((ret = setsockopt(b->num, IPPROTO_IP, IP_DONTFRAG,
-                                  &sockopt_val, sizeof(sockopt_val))) < 0) {
-                perror("setsockopt");
-                ret = -1;
-            }
+                                  &sockopt_val, sizeof(sockopt_val))) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
 # elif defined(OPENSSL_SYS_LINUX) && defined(IP_MTU_DISCOVER) && defined (IP_PMTUDISC_PROBE)
-            if ((sockopt_val = num ? IP_PMTUDISC_PROBE : IP_PMTUDISC_DONT),
-                (ret = setsockopt(b->num, IPPROTO_IP, IP_MTU_DISCOVER,
-                                  &sockopt_val, sizeof(sockopt_val))) < 0) {
-                perror("setsockopt");
-                ret = -1;
-            }
+            sockopt_val = num ? IP_PMTUDISC_PROBE : IP_PMTUDISC_DONT;
+            if ((ret = setsockopt(b->num, IPPROTO_IP, IP_MTU_DISCOVER,
+                                  &sockopt_val, sizeof(sockopt_val))) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
 # elif defined(OPENSSL_SYS_WINDOWS) && defined(IP_DONTFRAGMENT)
+            sockopt_val = num ? 1 : 0;
             if ((ret = setsockopt(b->num, IPPROTO_IP, IP_DONTFRAGMENT,
                                   (const char *)&sockopt_val,
-                                  sizeof(sockopt_val))) < 0) {
-                perror("setsockopt");
-                ret = -1;
-            }
+                                  sizeof(sockopt_val))) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
 # else
             ret = -1;
 # endif
@@ -893,19 +878,19 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
 # if OPENSSL_USE_IPV6
         case AF_INET6:
 #  if defined(IPV6_DONTFRAG)
+            sockopt_val = num ? 1 : 0;
             if ((ret = setsockopt(b->num, IPPROTO_IPV6, IPV6_DONTFRAG,
                                   (const void *)&sockopt_val,
-                                  sizeof(sockopt_val))) < 0) {
-                perror("setsockopt");
-                ret = -1;
-            }
+                                  sizeof(sockopt_val))) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
+
 #  elif defined(OPENSSL_SYS_LINUX) && defined(IPV6_MTUDISCOVER)
-            if ((sockopt_val = num ? IP_PMTUDISC_PROBE : IP_PMTUDISC_DONT),
-                (ret = setsockopt(b->num, IPPROTO_IPV6, IPV6_MTU_DISCOVER,
-                                  &sockopt_val, sizeof(sockopt_val))) < 0) {
-                perror("setsockopt");
-                ret = -1;
-            }
+            sockopt_val = num ? IP_PMTUDISC_PROBE : IP_PMTUDISC_DONT;
+            if ((ret = setsockopt(b->num, IPPROTO_IPV6, IPV6_MTU_DISCOVER,
+                                  &sockopt_val, sizeof(sockopt_val))) < 0)
+                ERR_raise_data(ERR_LIB_SYS, get_last_socket_error(),
+                               "calling setsockopt()");
 #  else
             ret = -1;
 #  endif
@@ -960,10 +945,23 @@ static long dgram_ctrl(BIO *b, int cmd, long num, void *ptr)
         *(int *)ptr = data->local_addr_enabled;
         break;
 
+    case BIO_CTRL_GET_RPOLL_DESCRIPTOR:
+    case BIO_CTRL_GET_WPOLL_DESCRIPTOR:
+        {
+            BIO_POLL_DESCRIPTOR *pd = ptr;
+
+            pd->type        = BIO_POLL_DESCRIPTOR_TYPE_SOCK_FD;
+            pd->value.fd    = b->num;
+        }
+        break;
+
     default:
         ret = 0;
         break;
     }
+    /* Normalize if error */
+    if (ret < 0)
+        ret = -1;
     return ret;
 }
 
@@ -1105,12 +1103,14 @@ static int extract_local(BIO *b, MSGHDR_TYPE *mh, BIO_ADDR *local) {
 
 static int pack_local(BIO *b, MSGHDR_TYPE *mh, const BIO_ADDR *local) {
     int af = dgram_get_sock_family(b);
+#  if defined(IP_PKTINFO) || defined(IP_RECVDSTADDR) || defined(IPV6_PKTINFO)
+    CMSGHDR_TYPE *cmsg;
+    bio_dgram_data *data = b->ptr;
+#  endif
 
     if (af == AF_INET) {
 #  if defined(IP_PKTINFO)
-        CMSGHDR_TYPE *cmsg;
         struct in_pktinfo *info;
-        bio_dgram_data *data = b->ptr;
 
 #   if defined(OPENSSL_SYS_WINDOWS)
         cmsg = (CMSGHDR_TYPE *)mh->Control.buf;
@@ -1123,7 +1123,9 @@ static int pack_local(BIO *b, MSGHDR_TYPE *mh, const BIO_ADDR *local) {
         cmsg->cmsg_type  = IP_PKTINFO;
 
         info = (struct in_pktinfo *)BIO_CMSG_DATA(cmsg);
+#   if !defined(OPENSSL_SYS_WINDOWS) && !defined(OPENSSL_SYS_CYGWIN)
         info->ipi_spec_dst      = local->s_in.sin_addr;
+#   endif
         info->ipi_addr.s_addr   = 0;
         info->ipi_ifindex       = 0;
 
@@ -1147,18 +1149,28 @@ static int pack_local(BIO *b, MSGHDR_TYPE *mh, const BIO_ADDR *local) {
         return 1;
 
 #  elif defined(IP_SENDSRCADDR)
-        {
-            struct cmsghdr *cmsg;
-            struct in_addr *info;
+        struct in_addr *info;
 
-            cmsg = (struct cmsghdr *)mh->msg_control;
-            cmsg->cmsg_len   = BIO_CMSG_LEN(sizeof(struct in_addr));
-            cmsg->cmsg_level = IPPROTO_IP;
-            cmsg->cmsg_type  = IP_SENDSRCADDR;
-
-            info = (struct in_addr *)BIO_CMSG_DATA(cmsg);
-            *info = local->s_in.sin_addr;
+        /*
+         * At least FreeBSD is very pedantic about using IP_SENDSRCADDR when we
+         * are not bound to 0.0.0.0 or ::, even if the address matches what we
+         * bound to. Support this by not packing the structure if the address
+         * matches our understanding of our local address. IP_SENDSRCADDR is a
+         * BSD thing, so we don't need an explicit test for BSD here.
+         */
+        if (local->s_in.sin_addr.s_addr == data->local_addr.s_in.sin_addr.s_addr) {
+            mh->msg_control    = NULL;
+            mh->msg_controllen = 0;
+            return 1;
         }
+
+        cmsg = (struct cmsghdr *)mh->msg_control;
+        cmsg->cmsg_len   = BIO_CMSG_LEN(sizeof(struct in_addr));
+        cmsg->cmsg_level = IPPROTO_IP;
+        cmsg->cmsg_type  = IP_SENDSRCADDR;
+
+        info = (struct in_addr *)BIO_CMSG_DATA(cmsg);
+        *info = local->s_in.sin_addr;
 
         /* See comment above. */
         if (local->s_in.sin_port != 0
@@ -1174,9 +1186,7 @@ static int pack_local(BIO *b, MSGHDR_TYPE *mh, const BIO_ADDR *local) {
 #  if OPENSSL_USE_IPV6
     else if (af == AF_INET6) {
 #   if defined(IPV6_PKTINFO)
-        CMSGHDR_TYPE *cmsg;
         struct in6_pktinfo *info;
-        bio_dgram_data *data = b->ptr;
 
 #    if defined(OPENSSL_SYS_WINDOWS)
         cmsg = (CMSGHDR_TYPE *)mh->Control.buf;
@@ -1493,7 +1503,7 @@ static int dgram_recvmmsg(BIO *b, BIO_MSG *msg,
         num_msg = BIO_MAX_MSGS_PER_CALL;
 
     for (i = 0; i < num_msg; ++i) {
-        translate_msg(b, &mh[i].msg_hdr, &iov[i], 
+        translate_msg(b, &mh[i].msg_hdr, &iov[i],
                       control[i], &BIO_MSG_N(msg, stride, i));
 
         /* If local address was requested, it must have been enabled */
@@ -1521,16 +1531,14 @@ static int dgram_recvmmsg(BIO *b, BIO_MSG *msg,
          */
         if (BIO_MSG_N(msg, stride, i).local != NULL)
             if (extract_local(b, &mh[i].msg_hdr,
-                              BIO_MSG_N(msg, stride, i).local) < 1) {
-                if (i > 0) {
-                    *num_processed = i;
-                    return 1;
-                } else {
-                    *num_processed = 0;
-                    ERR_raise(ERR_LIB_BIO, BIO_R_LOCAL_ADDR_NOT_AVAILABLE);
-                    return 0;
-                }
-            }
+                              BIO_MSG_N(msg, stride, i).local) < 1)
+                /*
+                 * It appears BSDs do not support local addresses for
+                 * loopback sockets. In this case, just clear the local
+                 * address, as for OS X and Windows in some circumstances
+                 * (see below).
+                 */
+                BIO_ADDR_clear(msg->local);
     }
 
     *num_processed = (size_t)ret;
@@ -1564,7 +1572,7 @@ static int dgram_recvmmsg(BIO *b, BIO_MSG *msg,
     msg->flags      = 0;
 
     if (msg->local != NULL)
-        if (extract_local(b, &mh, msg->local) < 1) {
+        if (extract_local(b, &mh, msg->local) < 1)
             /*
              * OS X exhibits odd behaviour where it appears that if a packet is
              * sent before the receiving interface enables IP_PKTINFO, it will
@@ -1580,19 +1588,13 @@ static int dgram_recvmmsg(BIO *b, BIO_MSG *msg,
              *
              * We cannot return the local address if we do not have it, but this
              * is not a caller error either, so just return a zero address
-             * structure.
-             *
-             * We enable this workaround for Apple only as it should not
-             * be necessary otherwise.
+             * structure. This is similar to how we handle Windows loopback
+             * interfaces (see below). We enable this workaround for all
+             * platforms, not just Apple, as this kind of quirk in OS networking
+             * stacks seems to be common enough that failing hard if a local
+             * address is not provided appears to be too brittle.
              */
-#  if defined(__APPLE__)
             BIO_ADDR_clear(msg->local);
-#  else
-            ERR_raise(ERR_LIB_BIO, BIO_R_LOCAL_ADDR_NOT_AVAILABLE);
-            *num_processed = 0;
-            return 0;
-#  endif
-        }
 
     *num_processed = 1;
     return 1;
@@ -1832,10 +1834,8 @@ static int dgram_sctp_new(BIO *bi)
 
     bi->init = 0;
     bi->num = 0;
-    if ((data = OPENSSL_zalloc(sizeof(*data))) == NULL) {
-        ERR_raise(ERR_LIB_BIO, ERR_R_MALLOC_FAILURE);
+    if ((data = OPENSSL_zalloc(sizeof(*data))) == NULL)
         return 0;
-    }
 #  ifdef SCTP_PR_SCTP_NONE
     data->prinfo.pr_policy = SCTP_PR_SCTP_NONE;
 #  endif
@@ -2070,10 +2070,8 @@ static int dgram_sctp_read(BIO *b, char *out, int outl)
             optlen =
                 (socklen_t) (sizeof(sctp_assoc_t) + 256 * sizeof(uint8_t));
             authchunks = OPENSSL_malloc(optlen);
-            if (authchunks == NULL) {
-                ERR_raise(ERR_LIB_BIO, ERR_R_MALLOC_FAILURE);
+            if (authchunks == NULL)
                 return -1;
-            }
             memset(authchunks, 0, optlen);
             ii = getsockopt(b->num, IPPROTO_SCTP, SCTP_PEER_AUTH_CHUNKS,
                             authchunks, &optlen);
@@ -2788,29 +2786,6 @@ int BIO_dgram_non_fatal_error(int err)
         break;
     }
     return 0;
-}
-
-static void get_current_time(struct timeval *t)
-{
-# if defined(_WIN32)
-    SYSTEMTIME st;
-    unsigned __int64 now_ul;
-    FILETIME now_ft;
-
-    GetSystemTime(&st);
-    SystemTimeToFileTime(&st, &now_ft);
-    now_ul = ((unsigned __int64)now_ft.dwHighDateTime << 32) | now_ft.dwLowDateTime;
-#  ifdef  __MINGW32__
-    now_ul -= 116444736000000000ULL;
-#  else
-    now_ul -= 116444736000000000UI64; /* re-bias to 1/1/1970 */
-#  endif
-    t->tv_sec = (long)(now_ul / 10000000);
-    t->tv_usec = ((int)(now_ul % 10000000)) / 10;
-# else
-    if (gettimeofday(t, NULL) < 0)
-        perror("gettimeofday");
-# endif
 }
 
 #endif

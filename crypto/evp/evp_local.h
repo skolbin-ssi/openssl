@@ -128,8 +128,10 @@ struct evp_keymgmt_st {
     /* Import and export routines */
     OSSL_FUNC_keymgmt_import_fn *import;
     OSSL_FUNC_keymgmt_import_types_fn *import_types;
+    OSSL_FUNC_keymgmt_import_types_ex_fn *import_types_ex;
     OSSL_FUNC_keymgmt_export_fn *export;
     OSSL_FUNC_keymgmt_export_types_fn *export_types;
+    OSSL_FUNC_keymgmt_export_types_ex_fn *export_types_ex;
     OSSL_FUNC_keymgmt_dup_fn *dup;
 } /* EVP_KEYMGMT */ ;
 
@@ -228,6 +230,8 @@ struct evp_kem_st {
     OSSL_FUNC_kem_gettable_ctx_params_fn *gettable_ctx_params;
     OSSL_FUNC_kem_set_ctx_params_fn *set_ctx_params;
     OSSL_FUNC_kem_settable_ctx_params_fn *settable_ctx_params;
+    OSSL_FUNC_kem_auth_encapsulate_init_fn *auth_encapsulate_init;
+    OSSL_FUNC_kem_auth_decapsulate_init_fn *auth_decapsulate_init;
 } /* EVP_KEM */;
 
 int PKCS5_v2_PBKDF2_keyivgen(EVP_CIPHER_CTX *ctx, const char *pass,

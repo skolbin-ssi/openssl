@@ -168,7 +168,8 @@ const OPTIONS ca_options[] = {
     {"quiet", OPT_QUIET, '-', "Terse output during processing"},
     {"outdir", OPT_OUTDIR, '/', "Where to put output cert"},
     {"in", OPT_IN, '<', "The input cert request(s)"},
-    {"inform", OPT_INFORM, 'F', "CSR input format (DER or PEM); default PEM"},
+    {"inform", OPT_INFORM, 'F',
+     "CSR input format to use (PEM or DER; by default try PEM first)"},
     {"infiles", OPT_INFILES, '-', "The last argument, requests to process"},
     {"out", OPT_OUT, '>', "Where to put the output file(s)"},
     {"dateopt", OPT_DATEOPT, 's', "Datetime format used for printing. (rfc_822/iso_8601). Default is rfc_822."},
@@ -1374,7 +1375,7 @@ static int certify(X509 **xret, const char *infile, int informat,
     EVP_PKEY *pktmp = NULL;
     int ok = -1, i;
 
-    req = load_csr(infile, informat, "certificate request");
+    req = load_csr_autofmt(infile, informat, "certificate request");
     if (req == NULL)
         goto end;
     if ((pktmp = X509_REQ_get0_pubkey(req)) == NULL) {
@@ -1925,7 +1926,7 @@ static int do_body(X509 **xret, EVP_PKEY *pkey, X509 *x509,
         !EVP_PKEY_missing_parameters(pkey))
         EVP_PKEY_copy_parameters(pktmp, pkey);
 
-    if (!do_X509_sign(ret, pkey, dgst, sigopts, &ext_ctx))
+    if (!do_X509_sign(ret, 0, pkey, dgst, sigopts, &ext_ctx))
         goto end;
 
     /* We now just add it to the database as DB_TYPE_VAL('V') */

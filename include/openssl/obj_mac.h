@@ -890,6 +890,10 @@
 #define NID_id_ct_ASPA          1250
 #define OBJ_id_ct_ASPA          OBJ_id_smime_ct,49L
 
+#define SN_id_ct_signedTAL              "id-ct-signedTAL"
+#define NID_id_ct_signedTAL             1284
+#define OBJ_id_ct_signedTAL             OBJ_id_smime_ct,50L
+
 #define SN_id_smime_aa_receiptRequest           "id-smime-aa-receiptRequest"
 #define NID_id_smime_aa_receiptRequest          212
 #define OBJ_id_smime_aa_receiptRequest          OBJ_id_smime_aa,1L
@@ -1236,6 +1240,10 @@
 #define LN_SM2_with_SM3         "SM2-with-SM3"
 #define NID_SM2_with_SM3                1204
 #define OBJ_SM2_with_SM3                OBJ_sm_scheme,501L
+
+#define LN_hmacWithSM3          "hmacWithSM3"
+#define NID_hmacWithSM3         1281
+#define OBJ_hmacWithSM3         OBJ_sm3,3L,1L
 
 #define LN_hmacWithSHA224               "hmacWithSHA224"
 #define NID_hmacWithSHA224              798
@@ -5086,6 +5094,11 @@
 #define NID_sm4_ccm             1249
 #define OBJ_sm4_ccm             OBJ_sm_scheme,104L,9L
 
+#define SN_sm4_xts              "SM4-XTS"
+#define LN_sm4_xts              "sm4-xts"
+#define NID_sm4_xts             1290
+#define OBJ_sm4_xts             OBJ_sm_scheme,104L,10L
+
 #define SN_hmac         "HMAC"
 #define LN_hmac         "hmac"
 #define NID_hmac                855
@@ -5163,6 +5176,9 @@
 #define NID_brainpoolP256r1             927
 #define OBJ_brainpoolP256r1             1L,3L,36L,3L,3L,2L,8L,1L,1L,7L
 
+#define SN_brainpoolP256r1tls13         "brainpoolP256r1tls13"
+#define NID_brainpoolP256r1tls13                1285
+
 #define SN_brainpoolP256t1              "brainpoolP256t1"
 #define NID_brainpoolP256t1             928
 #define OBJ_brainpoolP256t1             1L,3L,36L,3L,3L,2L,8L,1L,1L,8L
@@ -5179,6 +5195,9 @@
 #define NID_brainpoolP384r1             931
 #define OBJ_brainpoolP384r1             1L,3L,36L,3L,3L,2L,8L,1L,1L,11L
 
+#define SN_brainpoolP384r1tls13         "brainpoolP384r1tls13"
+#define NID_brainpoolP384r1tls13                1286
+
 #define SN_brainpoolP384t1              "brainpoolP384t1"
 #define NID_brainpoolP384t1             932
 #define OBJ_brainpoolP384t1             1L,3L,36L,3L,3L,2L,8L,1L,1L,12L
@@ -5186,6 +5205,9 @@
 #define SN_brainpoolP512r1              "brainpoolP512r1"
 #define NID_brainpoolP512r1             933
 #define OBJ_brainpoolP512r1             1L,3L,36L,3L,3L,2L,8L,1L,1L,13L
+
+#define SN_brainpoolP512r1tls13         "brainpoolP512r1tls13"
+#define NID_brainpoolP512r1tls13                1287
 
 #define SN_brainpoolP512t1              "brainpoolP512t1"
 #define NID_brainpoolP512t1             934
@@ -5565,6 +5587,24 @@
 #define SN_aes_256_siv          "AES-256-SIV"
 #define LN_aes_256_siv          "aes-256-siv"
 #define NID_aes_256_siv         1200
+
+#define SN_oracle               "oracle-organization"
+#define LN_oracle               "Oracle organization"
+#define NID_oracle              1282
+#define OBJ_oracle              OBJ_joint_iso_itu_t,16L,840L,1L,113894L
+
+#define SN_oracle_jdk_trustedkeyusage           "oracle-jdk-trustedkeyusage"
+#define LN_oracle_jdk_trustedkeyusage           "Trusted key usage (Oracle)"
+#define NID_oracle_jdk_trustedkeyusage          1283
+#define OBJ_oracle_jdk_trustedkeyusage          OBJ_oracle,746875L,1L,1L
+
+#define SN_brotli               "brotli"
+#define LN_brotli               "Brotli compression"
+#define NID_brotli              1288
+
+#define SN_zstd         "zstd"
+#define LN_zstd         "Zstandard compression"
+#define NID_zstd                1289
 
 #endif /* OPENSSL_OBJ_MAC_H */
 

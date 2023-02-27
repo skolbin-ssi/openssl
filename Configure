@@ -27,7 +27,7 @@ use OpenSSL::config;
 my $orig_death_handler = $SIG{__DIE__};
 $SIG{__DIE__} = \&death_handler;
 
-my $usage="Usage: Configure [no-<cipher> ...] [enable-<cipher> ...] [-Dxxx] [-lxxx] [-Lxxx] [-fxxx] [-Kxxx] [no-hw-xxx|no-hw] [[no-]threads] [[no-]shared] [[no-]zlib|zlib-dynamic] [no-asm] [no-egd] [sctp] [386] [--prefix=DIR] [--openssldir=OPENSSLDIR] [--with-xxx[=vvv]] [--config=FILE] os/compiler[:flags]\n";
+my $usage="Usage: Configure [no-<feature> ...] [enable-<feature> ...] [-Dxxx] [-lxxx] [-Lxxx] [-fxxx] [-Kxxx] [no-hw-xxx|no-hw] [[no-]threads] [[no-]thread-pool] [[no-]default-thread-pool] [[no-]shared] [[no-]zlib|zlib-dynamic] [no-asm] [no-egd] [sctp] [386] [--prefix=DIR] [--openssldir=OPENSSLDIR] [--with-xxx[=vvv]] [--config=FILE] os/compiler[:flags]\n";
 
 my $banner = <<"EOF";
 
@@ -81,6 +81,10 @@ EOF
 # [no-]threads  [don't] try to create a library that is suitable for
 #               multithreaded applications (default is "threads" if we
 #               know how to do it)
+# [no-]thread-pool
+#               [don't] allow thread pool functionality
+# [no-]default-thread-pool
+#               [don't] allow default thread pool functionality
 # [no-]shared   [don't] try to create shared libraries when supported.
 # [no-]pic      [don't] try to build position independent code when supported.
 #               If disabled, it also disables shared and dynamic-engine.
@@ -88,7 +92,7 @@ EOF
 # no-egd        do not compile support for the entropy-gathering daemon APIs
 # [no-]zlib     [don't] compile support for zlib compression.
 # zlib-dynamic  Like "zlib", but the zlib library is expected to be a shared
-#               library and will be loaded in run-time by the OpenSSL library.
+#               library and will be loaded at run-time by the OpenSSL library.
 # sctp          include SCTP support
 # enable-quic   include QUIC support (currently just for developers as the
 #               implementation is by no means complete and usable)
@@ -163,7 +167,8 @@ my @gcc_devteam_warn = qw(
     -Wsign-compare
     -Wshadow
     -Wformat
-    -Wtype-limits
+    -Wno-type-limits
+    -Wno-tautological-constant-out-of-range-compare
     -Wundef
     -Werror
     -Wmissing-prototypes
@@ -412,11 +417,14 @@ my @disablables = (
     "autoload-config",
     "bf",
     "blake2",
+    "brotli",
+    "brotli-dynamic",
     "buildtest-c++",
     "bulk",
     "cached-fetch",
     "camellia",
     "capieng",
+    "winstore",
     "cast",
     "chacha",
     "cmac",
@@ -425,6 +433,7 @@ my @disablables = (
     "comp",
     "crypto-mdebug",
     "ct",
+    "default-thread-pool",
     "deprecated",
     "des",
     "devcryptoeng",
@@ -496,6 +505,7 @@ my @disablables = (
     "stdio",
     "tests",
     "tfo",
+    "thread-pool",
     "threads",
     "tls",
     "trace",
@@ -508,6 +518,8 @@ my @disablables = (
     "whirlpool",
     "zlib",
     "zlib-dynamic",
+    "zstd",
+    "zstd-dynamic",
     );
 foreach my $proto ((@tls, @dtls))
         {
@@ -539,6 +551,8 @@ my %deprecated_disablables = (
 our %disabled = ( # "what"         => "comment"
                   "fips"                => "default",
                   "asan"                => "default",
+                  "brotli"              => "default",
+                  "brotli-dynamic"      => "default",
                   "buildtest-c++"       => "default",
                   "crypto-mdebug"       => "default",
                   "crypto-mdebug-backtrace" => "default",
@@ -563,6 +577,8 @@ our %disabled = ( # "what"         => "comment"
                   "weak-ssl-ciphers"    => "default",
                   "zlib"                => "default",
                   "zlib-dynamic"        => "default",
+                  "zstd"                => "default",
+                  "zstd-dynamic"        => "default",
                 );
 
 # Note: => pair form used for aesthetics, not to truly make a hash table
@@ -590,6 +606,8 @@ my @disable_cascades = (
     "ssl"               => [ "ssl3" ],
     "ssl3-method"       => [ "ssl3" ],
     "zlib"              => [ "zlib-dynamic" ],
+    "brotli"            => [ "brotli-dynamic" ],
+    "zstd"              => [ "zstd-dynamic" ],
     "des"               => [ "mdc2" ],
     "ec"                => [ "ec2m", "ecdsa", "ecdh", "sm2", "gost" ],
     "dgram"             => [ "dtls", "quic", "sctp" ],
@@ -635,7 +653,7 @@ my @disable_cascades = (
     "stdio"             => [ "apps", "capieng", "egd" ],
     "apps"              => [ "tests" ],
     "tests"             => [ "external-tests" ],
-    "comp"              => [ "zlib" ],
+    "comp"              => [ "zlib", "brotli", "zstd" ],
     "sm3"               => [ "sm2" ],
     sub { !$disabled{"unit-test"} } => [ "heartbeats" ],
 
@@ -647,6 +665,9 @@ my @disable_cascades = (
     "cmp"               => [ "crmf" ],
 
     "fips"              => [ "fips-securitychecks", "acvp-tests" ],
+
+    "threads"           => [ "thread-pool" ],
+    "thread-pool"       => [ "default-thread-pool" ],
 
     "deprecated-3.0"    => [ "engine", "srp" ]
     );
@@ -893,6 +914,14 @@ while (@argvcopy)
                         {
                         delete $disabled{"zlib"};
                         }
+                elsif ($1 eq "brotli-dynamic")
+                        {
+                        delete $disabled{"brotli"};
+                        }
+                elsif ($1 eq "zstd-dynamic")
+                        {
+                        delete $disabled{"zstd"};
+                        }
                 my $algo = $1;
                 delete $disabled{$algo};
 
@@ -968,6 +997,22 @@ while (@argvcopy)
                 elsif (/^--with-zlib-include=(.*)$/)
                         {
                         $withargs{zlib_include}=$1;
+                        }
+                elsif (/^--with-brotli-lib=(.*)$/)
+                        {
+                        $withargs{brotli_lib}=$1;
+                        }
+                elsif (/^--with-brotli-include=(.*)$/)
+                        {
+                        $withargs{brotli_include}=$1;
+                        }
+                elsif (/^--with-zstd-lib=(.*)$/)
+                        {
+                        $withargs{zstd_lib}=$1;
+                        }
+                elsif (/^--with-zstd-include=(.*)$/)
+                        {
+                        $withargs{zstd_include}=$1;
                         }
                 elsif (/^--with-fuzzer-lib=(.*)$/)
                         {
@@ -1401,7 +1446,7 @@ $target{build_scheme} = [ $target{build_scheme} ]
 my ($builder, $builder_platform, @builder_opts) =
     @{$target{build_scheme}};
 
-foreach my $checker (($builder_platform."-".$target{build_file}."-checker.pm",
+foreach my $checker (($builder_platform."-".$config{build_file}."-checker.pm",
                       $builder_platform."-checker.pm")) {
     my $checker_path = catfile($srcdir, "Configurations", $checker);
     if (-f $checker_path) {
@@ -1708,26 +1753,25 @@ unless ($disabled{devcryptoeng}) {
 
 unless ($disabled{ktls}) {
     $config{ktls}="";
+    my $cc = $config{CROSS_COMPILE}.$config{CC};
     if ($target =~ m/^linux/) {
-        my $usr = "/usr/$config{cross_compile_prefix}";
-        chop($usr);
-        if ($config{cross_compile_prefix} eq "") {
-            $usr = "/usr";
-        }
-        my $minver = (4 << 16) + (13 << 8) + 0;
-        my @verstr = split(" ",`cat $usr/include/linux/version.h | grep LINUX_VERSION_CODE`);
-
-        if ($verstr[2] < $minver) {
+        system("printf '#include <sys/types.h>\n#include <linux/tls.h>' | $cc -E - >/dev/null 2>&1");
+        if ($? != 0) {
             disable('too-old-kernel', 'ktls');
         }
     } elsif ($target =~ m/^BSD/) {
-        my $cc = $config{CROSS_COMPILE}.$config{CC};
         system("printf '#include <sys/types.h>\n#include <sys/ktls.h>' | $cc -E - >/dev/null 2>&1");
         if ($? != 0) {
             disable('too-old-freebsd', 'ktls');
         }
     } else {
         disable('not-linux-or-freebsd', 'ktls');
+    }
+}
+
+unless ($disabled{winstore}) {
+    unless ($target =~ /^(?:Cygwin|mingw|VC-|BC-)/) {
+        disable('not-windows', 'winstore');
     }
 }
 
@@ -1802,7 +1846,7 @@ foreach my $what (sort keys %disabled) {
 
     if (!grep { $what eq $_ } ( 'buildtest-c++', 'fips', 'threads', 'shared',
                                 'module', 'pic', 'dynamic-engine', 'makedepend',
-                                'zlib-dynamic', 'zlib', 'sse2', 'legacy' )) {
+                                'sse2', 'legacy' )) {
         (my $WHAT = uc $what) =~ s|-|_|g;
         my $skipdir = $what;
 
@@ -1868,8 +1912,8 @@ if ($builder eq "unified") {
     # Store the name of the template file we will build the build file from
     # in %config.  This may be useful for the build file itself.
     my @build_file_template_names =
-        ( $builder_platform."-".$target{build_file}.".tmpl",
-          $target{build_file}.".tmpl" );
+        ( $builder_platform."-".$config{build_file}.".tmpl",
+          $config{build_file}.".tmpl" );
     my @build_file_templates = ();
 
     # First, look in the user provided directory, if given
@@ -2886,7 +2930,7 @@ exit(0);
 #
 sub death_handler {
     die @_ if $^S;              # To prevent the added message in eval blocks
-    my $build_file = $target{build_file} // "build file";
+    my $build_file = $config{build_file} // "build file";
     my @message = ( <<"_____", @_ );
 
 Failure!  $build_file wasn't produced.

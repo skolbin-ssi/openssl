@@ -114,6 +114,7 @@ char *get_passwd(const char *pass, const char *desc);
 int app_passwd(const char *arg1, const char *arg2, char **pass1, char **pass2);
 int add_oid_section(CONF *conf);
 X509_REQ *load_csr(const char *file, int format, const char *desc);
+X509_REQ *load_csr_autofmt(const char *infile, int format, const char *desc);
 X509 *load_cert_pass(const char *uri, int format, int maybe_stdin,
                      const char *pass, const char *desc);
 #define load_cert(uri, format, desc) load_cert_pass(uri, format, 1, NULL, desc)
@@ -258,7 +259,7 @@ int init_gen_str(EVP_PKEY_CTX **pctx,
                  const char *algname, ENGINE *e, int do_param,
                  OSSL_LIB_CTX *libctx, const char *propq);
 int cert_matches_key(const X509 *cert, const EVP_PKEY *pkey);
-int do_X509_sign(X509 *x, EVP_PKEY *pkey, const char *md,
+int do_X509_sign(X509 *x, int force_v1, EVP_PKEY *pkey, const char *md,
                  STACK_OF(OPENSSL_STRING) *sigopts, X509V3_CTX *ext_ctx);
 int do_X509_verify(X509 *x, EVP_PKEY *pkey, STACK_OF(OPENSSL_STRING) *vfyopts);
 int do_X509_REQ_sign(X509_REQ *x, EVP_PKEY *pkey, const char *md,

@@ -39,7 +39,12 @@ static int test_fizzbuzz(void)
     ossl_list_fizz_init(&a);
     ossl_list_buzz_init(&b);
 
+    if (!TEST_true(ossl_list_fizz_is_empty(&a)))
+        return 0;
+
     for (i = 1; i < nelem; i++) {
+        ossl_list_fizz_init_elem(elem + i);
+        ossl_list_buzz_init_elem(elem + i);
         elem[i].n = i;
         if (i % 3 == 0) {
             ossl_list_fizz_insert_tail(&a, elem + i);
@@ -51,8 +56,13 @@ static int test_fizzbuzz(void)
         }
     }
 
-    if (!TEST_size_t_eq(ossl_list_fizz_num(&a), na)
+    if (!TEST_false(ossl_list_fizz_is_empty(&a))
+            || !TEST_size_t_eq(ossl_list_fizz_num(&a), na)
             || !TEST_size_t_eq(ossl_list_buzz_num(&b), nb)
+            || !TEST_ptr(ossl_list_fizz_head(&a))
+            || !TEST_ptr(ossl_list_fizz_tail(&a))
+            || !TEST_ptr(ossl_list_buzz_head(&b))
+            || !TEST_ptr(ossl_list_buzz_tail(&b))
             || !TEST_int_eq(ossl_list_fizz_head(&a)->n, 3)
             || !TEST_int_eq(ossl_list_fizz_tail(&a)->n, na * 3)
             || !TEST_int_eq(ossl_list_buzz_head(&b)->n, nb * 5)
@@ -62,8 +72,12 @@ static int test_fizzbuzz(void)
     ossl_list_buzz_remove(&b, ossl_list_buzz_tail(&b));
     if (!TEST_size_t_eq(ossl_list_fizz_num(&a), --na)
             || !TEST_size_t_eq(ossl_list_buzz_num(&b), --nb)
+            || !TEST_ptr(ossl_list_fizz_head(&a))
+            || !TEST_ptr(ossl_list_buzz_tail(&b))
             || !TEST_int_eq(ossl_list_fizz_head(&a)->n, 6)
             || !TEST_int_eq(ossl_list_buzz_tail(&b)->n, 10)
+            || !TEST_ptr(ossl_list_fizz_next(ossl_list_fizz_head(&a)))
+            || !TEST_ptr(ossl_list_fizz_prev(ossl_list_fizz_tail(&a)))
             || !TEST_int_eq(ossl_list_fizz_next(ossl_list_fizz_head(&a))->n, 9)
             || !TEST_int_eq(ossl_list_fizz_prev(ossl_list_fizz_tail(&a))->n, 15))
         return 0;
@@ -87,8 +101,10 @@ static int test_insert(void)
     int n = 1;
 
     ossl_list_int_init(&l);
-    for (i = 0; i < OSSL_NELEM(elem); i++)
-            elem[i].n = i;
+    for (i = 0; i < OSSL_NELEM(elem); i++) {
+        ossl_list_int_init_elem(elem + i);
+        elem[i].n = i;
+    }
 
     /* Check various insert options - head, tail, middle */
     ossl_list_int_insert_head(&l, elem + 3);                /* 3 */
@@ -133,14 +149,18 @@ static int test_insert(void)
     ossl_list_int_remove(&l, elem + 2);                     /* 3 4 5 */
     ossl_list_int_remove(&l, elem + 4);                     /* 3 5 */
     ossl_list_int_remove(&l, elem + 3);                     /* 5 */
-    if (!TEST_int_eq(ossl_list_int_head(&l)->n, 5)
+    if (!TEST_ptr(ossl_list_int_head(&l))
+            || !TEST_ptr(ossl_list_int_tail(&l))
+            || !TEST_int_eq(ossl_list_int_head(&l)->n, 5)
             || !TEST_int_eq(ossl_list_int_tail(&l)->n, 5))
         return 0;
 
     /* Check removing the tail of a two element list works */
     ossl_list_int_insert_head(&l, elem);                    /* 0 5 */
     ossl_list_int_remove(&l, elem + 5);                     /* 0 */
-    if (!TEST_int_eq(ossl_list_int_head(&l)->n, 0)
+    if (!TEST_ptr(ossl_list_int_head(&l))
+            || !TEST_ptr(ossl_list_int_tail(&l))
+            || !TEST_int_eq(ossl_list_int_head(&l)->n, 0)
             || !TEST_int_eq(ossl_list_int_tail(&l)->n, 0))
         return 0;
 

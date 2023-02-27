@@ -21,7 +21,9 @@
 #include <openssl/pem.h>
 #include <openssl/provider.h>
 #include <openssl/rsa.h>
+#include <openssl/dh.h>
 #include <openssl/core_names.h>
+
 #include "testutil.h"
 #include "internal/nelem.h"
 
@@ -354,9 +356,69 @@ static int test_dh_tofrom_data_select(void)
     EVP_PKEY_CTX_free(gctx);
     return ret;
 }
+
+static int test_dh_paramgen(void)
+{
+    int ret;
+    OSSL_PARAM params[3];
+    EVP_PKEY *pkey = NULL;
+    EVP_PKEY_CTX *gctx = NULL;
+    unsigned int pbits = 512; /* minimum allowed for speed */
+
+    params[0] = OSSL_PARAM_construct_uint(OSSL_PKEY_PARAM_FFC_PBITS, &pbits);
+    params[1] = OSSL_PARAM_construct_utf8_string(OSSL_PKEY_PARAM_FFC_TYPE,
+                                                 "generator", 0);
+    params[2] = OSSL_PARAM_construct_end();
+
+    ret = TEST_ptr(gctx = EVP_PKEY_CTX_new_from_name(mainctx, "DH", NULL))
+          && TEST_int_gt(EVP_PKEY_paramgen_init(gctx), 0)
+          && TEST_true(EVP_PKEY_CTX_set_params(gctx, params))
+          && TEST_true(EVP_PKEY_paramgen(gctx, &pkey))
+          && TEST_ptr(pkey);
+
+    EVP_PKEY_CTX_free(gctx);
+    gctx = NULL;
+
+    ret = ret && TEST_ptr(gctx = EVP_PKEY_CTX_new_from_pkey(mainctx, pkey, NULL))
+              && TEST_int_eq(EVP_PKEY_param_check(gctx), 1)
+              && TEST_int_eq(EVP_PKEY_param_check_quick(gctx), 1);
+
+    EVP_PKEY_CTX_free(gctx);
+    EVP_PKEY_free(pkey);
+    return ret;
+}
 #endif
 
 #ifndef OPENSSL_NO_EC
+
+static int test_ec_d2i_i2d_pubkey(void)
+{
+    int ret = 0;
+    FILE *fp = NULL;
+    EVP_PKEY *key = NULL, *outkey = NULL;
+    static const char *filename = "pubkey.der";
+
+    if (!TEST_ptr(fp = fopen(filename, "wb"))
+        || !TEST_ptr(key = EVP_PKEY_Q_keygen(mainctx, NULL, "EC", "P-256"))
+        || !TEST_true(i2d_PUBKEY_fp(fp, key))
+        || !TEST_int_eq(fclose(fp), 0))
+        goto err;
+    fp = NULL;
+
+    if (!TEST_ptr(fp = fopen(filename, "rb"))
+        || !TEST_ptr(outkey = d2i_PUBKEY_ex_fp(fp, NULL, mainctx, NULL))
+        || !TEST_int_eq(EVP_PKEY_eq(key, outkey), 1))
+        goto err;
+
+    ret = 1;
+
+err:
+    EVP_PKEY_free(outkey);
+    EVP_PKEY_free(key);
+    fclose(fp);
+    return ret;
+}
+
 static int test_ec_tofrom_data_select(void)
 {
     int ret;
@@ -375,6 +437,19 @@ static int test_ecx_tofrom_data_select(void)
 
     ret = TEST_ptr(key = EVP_PKEY_Q_keygen(mainctx, NULL, "X25519"))
           && TEST_true(do_pkey_tofrom_data_select(key, "X25519"));
+    EVP_PKEY_free(key);
+    return ret;
+}
+#endif
+
+#ifndef OPENSSL_NO_SM2
+static int test_sm2_tofrom_data_select(void)
+{
+    int ret;
+    EVP_PKEY *key = NULL;
+
+    ret = TEST_ptr(key = EVP_PKEY_Q_keygen(mainctx, NULL, "SM2"))
+          && TEST_true(do_pkey_tofrom_data_select(key, "SM2"));
     EVP_PKEY_free(key);
     return ret;
 }
@@ -1073,6 +1148,34 @@ static int test_evp_md_ctx_copy(void)
     return ret;
 }
 
+#if !defined OPENSSL_NO_DES && !defined OPENSSL_NO_MD5
+static int test_evp_pbe_alg_add(void)
+{
+    int ret = 0;
+    int cipher_nid = 0, md_nid = 0;
+    EVP_PBE_KEYGEN_EX *keygen_ex = NULL;
+    EVP_PBE_KEYGEN *keygen = NULL;
+
+    if (!TEST_true(EVP_PBE_alg_add(NID_pbeWithMD5AndDES_CBC, EVP_des_cbc(), EVP_md5(),
+                                   PKCS5_PBE_keyivgen)))
+        goto err;
+
+    if (!TEST_true(EVP_PBE_find_ex(EVP_PBE_TYPE_OUTER, NID_pbeWithMD5AndDES_CBC,
+                                   &cipher_nid, &md_nid, &keygen, &keygen_ex)))
+        goto err;
+
+    if (!TEST_true(keygen != NULL))
+        goto err;
+    if (!TEST_true(keygen_ex == NULL))
+        goto err;
+
+    ret = 1;
+
+err:
+    return ret;
+}
+#endif
+
 int setup_tests(void)
 {
     if (!test_get_libctx(&mainctx, &nullprov, NULL, NULL, NULL)) {
@@ -1087,8 +1190,12 @@ int setup_tests(void)
     ADD_ALL_TESTS(test_d2i_PrivateKey_ex, 2);
     ADD_TEST(test_ec_tofrom_data_select);
     ADD_TEST(test_ecx_tofrom_data_select);
+    ADD_TEST(test_ec_d2i_i2d_pubkey);
 #else
     ADD_ALL_TESTS(test_d2i_PrivateKey_ex, 1);
+#endif
+#ifndef OPENSSL_NO_SM2
+    ADD_TEST(test_sm2_tofrom_data_select);
 #endif
 #ifndef OPENSSL_NO_DSA
     ADD_TEST(test_dsa_todata);
@@ -1096,6 +1203,7 @@ int setup_tests(void)
 #endif
 #ifndef OPENSSL_NO_DH
     ADD_TEST(test_dh_tofrom_data_select);
+    ADD_TEST(test_dh_paramgen);
 #endif
     ADD_TEST(test_rsa_tofrom_data_select);
 
@@ -1110,6 +1218,9 @@ int setup_tests(void)
     ADD_TEST(test_evp_md_ctx_dup);
     ADD_TEST(test_evp_md_ctx_copy);
     ADD_ALL_TESTS(test_provider_unload_effective, 2);
+#if !defined OPENSSL_NO_DES && !defined OPENSSL_NO_MD5
+    ADD_TEST(test_evp_pbe_alg_add);
+#endif
     return 1;
 }
 
