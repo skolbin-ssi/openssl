@@ -1,5 +1,5 @@
 /*
- * Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -53,9 +53,14 @@ int SSL_use_certificate(SSL *ssl, X509 *x)
 int SSL_use_certificate_file(SSL *ssl, const char *file, int type)
 {
     int j;
-    BIO *in;
+    BIO *in = NULL;
     int ret = 0;
     X509 *cert = NULL, *x = NULL;
+
+    if (file == NULL) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
+        goto end;
+    }
 
     in = BIO_new(BIO_s_file());
     if (in == NULL) {
@@ -68,10 +73,6 @@ int SSL_use_certificate_file(SSL *ssl, const char *file, int type)
         goto end;
     }
 
-    if (type != SSL_FILETYPE_ASN1 && type != SSL_FILETYPE_PEM) {
-        ERR_raise(ERR_LIB_SSL, SSL_R_BAD_SSL_FILETYPE);
-        goto end;
-    }
     x = X509_new_ex(ssl->ctx->libctx, ssl->ctx->propq);
     if (x == NULL) {
         ERR_raise(ERR_LIB_SSL, ERR_R_ASN1_LIB);
@@ -167,8 +168,13 @@ int SSL_use_PrivateKey(SSL *ssl, EVP_PKEY *pkey)
 int SSL_use_PrivateKey_file(SSL *ssl, const char *file, int type)
 {
     int j, ret = 0;
-    BIO *in;
+    BIO *in = NULL;
     EVP_PKEY *pkey = NULL;
+
+    if (file == NULL) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
+        goto end;
+    }
 
     in = BIO_new(BIO_s_file());
     if (in == NULL) {
@@ -300,9 +306,14 @@ static int ssl_set_cert(CERT *c, X509 *x, SSL_CTX *ctx)
 int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type)
 {
     int j = SSL_R_BAD_VALUE;
-    BIO *in;
+    BIO *in = NULL;
     int ret = 0;
     X509 *x = NULL, *cert = NULL;
+
+    if (file == NULL) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
+        goto end;
+    }
 
     in = BIO_new(BIO_s_file());
     if (in == NULL) {
@@ -314,10 +325,7 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type)
         ERR_raise(ERR_LIB_SSL, ERR_R_SYS_LIB);
         goto end;
     }
-    if (type != SSL_FILETYPE_ASN1 && type != SSL_FILETYPE_PEM) {
-        ERR_raise(ERR_LIB_SSL, SSL_R_BAD_SSL_FILETYPE);
-        goto end;
-    }
+
     x = X509_new_ex(ctx->libctx, ctx->propq);
     if (x == NULL) {
         ERR_raise(ERR_LIB_SSL, ERR_R_ASN1_LIB);
@@ -330,6 +338,9 @@ int SSL_CTX_use_certificate_file(SSL_CTX *ctx, const char *file, int type)
         j = ERR_R_PEM_LIB;
         cert = PEM_read_bio_X509(in, &x, ctx->default_passwd_callback,
                                  ctx->default_passwd_callback_userdata);
+    } else {
+        ERR_raise(ERR_LIB_SSL, SSL_R_BAD_SSL_FILETYPE);
+        goto end;
     }
     if (cert == NULL) {
         ERR_raise(ERR_LIB_SSL, j);
@@ -377,8 +388,13 @@ int SSL_CTX_use_PrivateKey(SSL_CTX *ctx, EVP_PKEY *pkey)
 int SSL_CTX_use_PrivateKey_file(SSL_CTX *ctx, const char *file, int type)
 {
     int j, ret = 0;
-    BIO *in;
+    BIO *in = NULL;
     EVP_PKEY *pkey = NULL;
+
+    if (file == NULL) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
+        goto end;
+    }
 
     in = BIO_new(BIO_s_file());
     if (in == NULL) {
@@ -440,7 +456,7 @@ int SSL_CTX_use_PrivateKey_ASN1(int type, SSL_CTX *ctx,
  */
 static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
 {
-    BIO *in;
+    BIO *in = NULL;
     int ret = 0;
     X509 *x = NULL;
     pem_password_cb *passwd_callback;
@@ -464,6 +480,11 @@ static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
 
         passwd_callback = sc->default_passwd_callback;
         passwd_callback_userdata = sc->default_passwd_callback_userdata;
+    }
+
+    if (file == NULL) {
+        ERR_raise(ERR_LIB_SSL, ERR_R_PASSED_NULL_PARAMETER);
+        goto end;
     }
 
     in = BIO_new(BIO_s_file());
